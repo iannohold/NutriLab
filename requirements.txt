@@ -1,0 +1,11 @@
+[connections.gsheets]
+type = "service_account"
+project_id = "nutrilab-507818"
+private_key_id = "89c8c5d80a478c98cb459db99a67c3cf5e7795e4"
+private_key = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDJJrwiZ2eAENaT\nBgYCqbPuvyfU9EQTf3ie4v/mqbaqlMqVK9wqMfG4V4BEqdU5dBZ3QeLUaHraHNwy\nrZrr1NI1uAMg36Tbfg5nV+epi723ABmBfgLI08Pa18sQjsPiG0KXmXPkhGP71JkC\no9jw+r1WbUaNmhfFvjrYS34FikH/IkEmF+2Mo0tI3fANgvxRcAeOLZrjGmRQw/Hf\nEi3+xpfY3rTrWv0cKGv2qaIbhC4J9vS0qoNVxaOqZ2azaFgooySaAbZpNHwy1q1E\nsw4WmgzholjvSOl4SjauiSa8Tit0DPwuzbaYp7bUBPSiW6eNEzLQhSWnEEBNh6bf\nnzqEcj6zAgMBAAECggEAGNT907d1OQObIbJUKp79lgMmLS1sfAW4A9FdKwIXiU5u\nBeVQvCrHPu0aah+XMY0JuvY4xOUTCXsXmfABmIyA2N3bEQNa7DfPGmXpNO6J4J4U\nB/7g5B70Zj9Ok8A0IWUhHur0Oik32J5ht0g332Ps3M8HrzJvLduykwIa0B9Fz3OY\nih/7EYcwJ+fpmNXJn6irML/5wry3YfQWTVHRlyGGPnReuiKd+z5PxkxyNFQWKjnt\npJbuY4HQA2ZnFIberknrPLOpSa/dL+0lBltYp+2nMu7xPZ+j8nrKZF/SErYULid/\n4vBQT8yg1r/229YE8PbbtN1ety8tnfcM7sP9X8UHUQKBgQDr+0KgBBGLsX25GRQ8\nIFECQ9iSZ3zVFWMMR/ZLdy771dBWY1nlahqyeDhtV4CuM6ybu6AXAm9OkKLxN/bJ\ncZ3Vh8Dj3tMjNi1dWLzsbtgzcdLQ8ObSLFb6rAUYFfOr8r0062sM51+gqw/QwCIG\ncq4zCcAhypfjMU2pM6ErlB8QEQKBgQDaNxP6ygtf5xyUZtqanl82Gc3HY3ERJhml\njLn8uxoS1BiBOgL0rBRuoBYn8SRP9/RhV3FCr8HeBl+dx9Q+EfTy+SoOaX/WtRuz\nIqSa9lSZ5ZPxmNDiJmpGnto8a0Xi/wUR+Nih35Nn9WMj6/Ft4AmAMEscjl15aNeq\nngZgNAKmgwKBgQCfYSEbgAP1rFf0durCvTTZacdRAlI+fGZcOhIv3/w8nKlMX2es\n2Z/UX/wEZXAEt+PhfrReNgfFMUzLzHeCkJkASeLORIWnp4S2IiPfL/IXtM2kzr+m\nvcm1Hg+Gt/TOcnC12DaCDZb5pe9Vlx6j6jqbP/+jEvjIuljwaW12SGE+cQKBgAtX\nPXSVN44eZr/XsJjEjlIzeRxZsLCheEfATpIx7yL3XuaoayroHo+5Ri2BPM/jJRJC\nByLeG4c8cY+zqPYo3MAb7vGczgYMl4nxzPg4wSDWa5/svz5hnLha3SCyuokXk93h\nPvD6u6B1gleFlaCOOjAtUloDlBwRNNQrLk2lplWdAoGAJFO3DIIf8Tni8le80VOK\nRxdx8nLNozGGNHabq47D2r3MSNzcY37Rz/WpKovVZ/jT9PSOU2tQOiI+HmHM/RFL\nw2vQZH6Qg6fC0dNz5UcBzSsqrfQmkS7EySkaKXhvtsUbhE3r29GH9vnLbjAdWC6h\n9DBRnjUGVAKMj+KAGWvXRPU=\n-----END PRIVATE KEY-----\n"
+client_email = "nutrilab-bot@nutrilab-507818.iam.gserviceaccount.com"
+client_id = "115430090640904794295"
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/nutrilab-bot%40nutrilab-507818.iam.gserviceaccount.com"
