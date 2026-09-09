@@ -258,7 +258,7 @@ st.sidebar.markdown("<div style='text-align: center; color: gray;'><small>⚡ Po
 # ==========================================
 if pagina_corrente == "🧪 Laboratorio Ricette":
     
-    st.title("🧪 NutriLab")
+    st.title("🧪 NutriLab24")
     st.markdown("#### *Progetta, bilancia e cucina le tue idee.* 💡 ⚖️ 🍳")
     st.write("")
 
@@ -403,7 +403,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
             st.info("Crea un foglio chiamato 'Ricette' in Google Sheets con le colonne: 'Nome Ricetta', 'Categoria', 'Dati JSON' per sbloccare questa funzione.")
 
     with tab_excel:
-        st.info("Carica un file CSV o Excel esportato da NutriLab, oppure una lista generica: **Prodotto | Quantità | Unità**")
+        st.info("Carica un file CSV o Excel esportato da NutriLab24, oppure una lista generica: **Prodotto | Quantità | Unità**")
         file_caricato = st.file_uploader("Scegli file Excel/CSV", type=['xls', 'xlsx', 'csv'])
         if file_caricato and st.button("📥 Importa da File Esterno"):
             try:
