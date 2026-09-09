@@ -10,7 +10,7 @@ import json
 import datetime
 import calendar
 
-st.set_page_config(page_title="NutriLab", page_icon="🧪", layout="wide")
+st.set_page_config(page_title="NutriLab24", page_icon="🧪", layout="wide")
 
 # =========================================================
 # 🔗 LINK DEL TUO FOGLIO GOOGLE SHEETS
