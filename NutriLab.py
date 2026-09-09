@@ -425,7 +425,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
             except Exception as e: st.error(f"Errore nella lettura del file. {e}")
 
     with tab_web:
-        st.info("Incolla il link di un blog (es. GialloZafferano). NutriLab cercherà di estrarre Titolo, Ingredienti e Procedimento!")
+        st.info("Incolla il link di un blog (es. GialloZafferano). NutriLab24 cercherà di estrarre Titolo, Ingredienti e Procedimento!")
         url_input = st.text_input("Link della ricetta (URL):")
         if st.button("🌐 Importa da Link Web") and url_input:
             try:
