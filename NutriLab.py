@@ -1012,7 +1012,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
         def update_vassoio_from_selection():
             ing = st.session_state.get("vassoio_ing_scelto")
             if ing and ing != "-- Seleziona --":
-                _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
+                _, _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
                 st.session_state.vassoio_unit = unita_def
                 st.session_state.vassoio_pz_w = peso_pz if peso_pz > 0 else 0.0
 
@@ -1203,7 +1203,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
         def update_lib_from_selection():
             ing = st.session_state.get("ing_lib_sel")
             if ing and ing != "-- Seleziona --":
-                _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
+                _, _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
                 st.session_state.unit_lib_val = unita_def
                 st.session_state.lib_pz_w = peso_pz if peso_pz > 0 else 0.0
 
