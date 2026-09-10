@@ -1012,7 +1012,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
         def update_vassoio_from_selection():
             ing = st.session_state.get("vassoio_ing_scelto")
             if ing and ing != "-- Seleziona --":
-                _, _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
+                _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
                 st.session_state.vassoio_unit = unita_def
                 st.session_state.vassoio_pz_w = peso_pz if peso_pz > 0 else 0.0
 
@@ -1105,6 +1105,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
         if st.session_state.diario_multi_items:
             st.markdown("### 🛒 Nel tuo Vassoio:")
             m_cal_tot = m_p_tot = m_c_tot = m_f_tot = m_sat_tot = m_fib_tot = 0.0
+            m_peso_tot = 0.0 
             
             temp_rows = []
             ingredienti_list = []
@@ -1149,6 +1150,9 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 if item.get("is_cotto"):
                     p_cotto = peso_effettivo * (1 + item.get("var_cottura", 0.0)/100)
                     p_cotto_str = f" (Cotto: {p_cotto:.1f} g)"
+                    m_peso_tot += p_cotto
+                else:
+                    m_peso_tot += peso_effettivo
                 
                 c1.write(f"🔹 **{item['nome']}** {p_cotto_str} ({item['unita']})")
                 
@@ -1165,6 +1169,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 ingredienti_list.append(f"{new_qty:g}{item['unita']} {item['nome']}")
                 
             st.write("")
+            st.info(f"⚖️ **Peso Totale del Vassoio:** {m_peso_tot:.1f} g")
             st.markdown(f"**Valori Nutrizionali Totali (Pronti per il Diario):**")
             cm_cal, cm2, cm1, cm3, cm4, cm5 = st.columns(6)
             cm_cal.markdown(f"**Calorie**\n\n{m_cal_tot:.0f} kcal")
@@ -1203,7 +1208,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
         def update_lib_from_selection():
             ing = st.session_state.get("ing_lib_sel")
             if ing and ing != "-- Seleziona --":
-                _, _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
+                _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
                 st.session_state.unit_lib_val = unita_def
                 st.session_state.lib_pz_w = peso_pz if peso_pz > 0 else 0.0
 
