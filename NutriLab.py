@@ -312,7 +312,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
                 st.session_state.input_unit = 'g'
                 st.session_state.input_pz_w = 0.0
             else:
-                m, cal, p, c, f, fib, sat, v, peso_pz, unita_def = get_macros_and_match(scelta)
+                m_name, cal, p, c, f, fib, sat, var_cott, peso_pz, unita_def = get_macros_and_match(scelta)
                 st.session_state.input_cal = float(cal); st.session_state.input_p = float(p); st.session_state.input_c = float(c)
                 st.session_state.input_f = float(f); st.session_state.input_sat = float(sat); st.session_state.input_fib = float(fib)
                 st.session_state.input_unit = unita_def
@@ -321,7 +321,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
         def fetch_macros_from_web_btn():
             new_name = st.session_state.get("new_name_free", "")
             if new_name:
-                m, cal, p, c, f, fib, sat, v, peso_pz, unita_def = get_macros_and_match(new_name)
+                m_name, cal, p, c, f, fib, sat, var_cott, peso_pz, unita_def = get_macros_and_match(new_name)
                 st.session_state.input_cal = float(cal); st.session_state.input_p = float(p); st.session_state.input_c = float(c)
                 st.session_state.input_f = float(f); st.session_state.input_sat = float(sat); st.session_state.input_fib = float(fib)
 
@@ -355,7 +355,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
             scelta = st.session_state.get("ing_scelto", "-- Seleziona --")
             act = st.session_state.get("new_name_free", "") if scelta == "Altro (Ricerca Libera su Web)" else (st.session_state.get("new_name_manual", "") if scelta == "Altro (Inserimento Manuale)" else scelta)
             if qty is not None and qty > 0 and act and act != "-- Seleziona --":
-                m_name, _, _, _, _, _, _, _, _, _ = get_macros_and_match(act)
+                m_name, m_cal, m_p, m_c, m_f, m_fib, m_sat, m_var, m_pesopz, m_unita = get_macros_and_match(act)
                 st.session_state.ingredients.append({
                     "id": uuid.uuid4().hex, "nome": act.title(), "matched_name": m_name, "quantita": float(qty), "unita": unit, 
                     "peso_pz": float(pz_w), "peso": float(qty) * pz_w if unit == 'pz' else float(qty), 
@@ -1012,7 +1012,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
         def update_vassoio_from_selection():
             ing = st.session_state.get("vassoio_ing_scelto")
             if ing and ing != "-- Seleziona --":
-                _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
+                m_name, m_cal, m_p, m_c, m_f, m_fib, m_sat, m_var, peso_pz, unita_def = get_macros_and_match(ing)
                 st.session_state.vassoio_unit = unita_def
                 st.session_state.vassoio_pz_w = peso_pz if peso_pz > 0 else 0.0
 
@@ -1208,7 +1208,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
         def update_lib_from_selection():
             ing = st.session_state.get("ing_lib_sel")
             if ing and ing != "-- Seleziona --":
-                _, _, _, _, _, _, _, peso_pz, unita_def = get_macros_and_match(ing)
+                m_name, m_cal, m_p, m_c, m_f, m_fib, m_sat, m_var, peso_pz, unita_def = get_macros_and_match(ing)
                 st.session_state.unit_lib_val = unita_def
                 st.session_state.lib_pz_w = peso_pz if peso_pz > 0 else 0.0
 
