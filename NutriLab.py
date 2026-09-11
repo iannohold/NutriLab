@@ -1563,7 +1563,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
     st.markdown("### 📊 I Tuoi Report")
     
     try:
-        df_diario_completo = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario")
+        df_diario_completo = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=10)
         if 'User_ID' not in df_diario_completo.columns: df_diario_completo['User_ID'] = ADMIN_ID
         
         expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID"]
