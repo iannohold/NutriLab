@@ -1531,7 +1531,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
         if st.button("➕ Registra nel Diario", type="primary", use_container_width=True):
             with st.spinner("Salvataggio in corso..."):
                 try:
-                    df_diario = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario")
+                    df_diario = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=0)
                     # Auto-Riparazione e formattazione robusta
                     if 'User_ID' not in df_diario.columns: df_diario['User_ID'] = ADMIN_ID
                     
