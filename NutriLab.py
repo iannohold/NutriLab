@@ -21,7 +21,7 @@ UTENTI = {
     "ospite": {"password": "test!", "nome": "Utente Ospite", "is_admin": False}
 }
 
-ADMIN_ID = "vincenzo"  # L'ID utente considerato come Amministratore globale
+ADMIN_ID = "vins"  # L'ID utente considerato come Amministratore globale
 
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "username" not in st.session_state: st.session_state.username = ""
@@ -986,14 +986,29 @@ elif pagina_corrente == "📅 Diario Alimentare":
             st.markdown("### 1️⃣ La preparazione di oggi")
             with st.expander("🛠️ Modifica ingredienti crudi (solo per questo pasto)", expanded=False):
                 mod_qty_raw = {}
+                mod_peso_pz = {} # NUOVO: per sovrascrivere il peso di ogni singolo pezzo
+                
                 for idx, row in df_r.iterrows():
-                    mod_qty_raw[idx] = st.number_input(
-                        f"{row['Nome']} ({row['Unita']}) a crudo", 
-                        min_value=0.0, 
-                        value=float(row['Quantita']), 
-                        step=1.0 if row['Unita'] == 'pz' else 5.0,
-                        key=f"mod_raw_{idx}"
-                    )
+                    c1_r, c2_r = st.columns([2, 1]) if row['Unita'] == 'pz' else st.columns([1, 0.01])
+                    with c1_r:
+                        mod_qty_raw[idx] = st.number_input(
+                            f"{row['Nome']} ({row['Unita']}) a crudo", 
+                            min_value=0.0, 
+                            value=float(row['Quantita']), 
+                            step=1.0 if row['Unita'] == 'pz' else 5.0,
+                            key=f"mod_raw_{idx}"
+                        )
+                    if row['Unita'] == 'pz':
+                        with c2_r:
+                            mod_peso_pz[idx] = st.number_input(
+                                f"Peso 1 pz (g)", 
+                                min_value=0.1, 
+                                value=float(row.get('Peso_pz', 100.0)), 
+                                step=1.0,
+                                key=f"mod_pz_{idx}"
+                            )
+                    else:
+                        mod_peso_pz[idx] = 0.0
             
             new_w_impasto_raw = 0.0
             new_w_altri_raw = 0.0
@@ -1006,7 +1021,8 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 
                 if actual_qta > 0:
                     u = str(row['Unita']).strip()
-                    pz_w = float(row.get('Peso_pz', 0.0))
+                    # Usa il peso_pz appena sovrascritto se è un pezzo
+                    pz_w = mod_peso_pz[idx] if u == 'pz' else 0.0
                     w_ing_raw = actual_qta * pz_w if u == 'pz' else actual_qta
                     
                     if str(row.get('Utilizzo', 'Impasto')) == 'Impasto': new_w_impasto_raw += w_ing_raw
@@ -1096,7 +1112,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
             ready_to_add = True
 
     # ---------------------------------------------------------
-    # FLUSSO 2: ALIMENTI (SINGOLI O MULTIPLI)
+    # FLUSSO 2: ALIMENTI (SINGOLI O MULTIPLI) - CON DIVISIONE
     # ---------------------------------------------------------
     elif tipo_inserimento_diario == "🛒 Alimenti (Singoli o Multipli)":
         st.markdown("### 1️⃣ Componi il pasto")
@@ -1180,7 +1196,6 @@ elif pagina_corrente == "📅 Diario Alimentare":
             m_cal_tot = m_p_tot = m_c_tot = m_f_tot = m_sat_tot = m_fib_tot = 0.0
             m_peso_tot = 0.0 
             
-            temp_rows = []
             ingredienti_list = []
             
             for i, item in enumerate(st.session_state.diario_multi_items):
@@ -1218,38 +1233,82 @@ elif pagina_corrente == "📅 Diario Alimentare":
                     m_peso_tot += peso_effettivo
                 
                 c1.write(f"🔹 **{item['nome']}** {p_cotto_str} ({item['unita']})")
-                
-                temp_rows.append({
-                    "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
-                    "Elemento": f"🛒 {item['nome']}{p_cotto_str}", "Quantita": new_qty, "Unita": item['unita'],
-                    "Calorie": cal_i, "Carboidrati": c_i, "Proteine": p_i,
-                    "Grassi": f_i, "Saturi": sat_i, "Fibre": fib_i, "User_ID": USER_ID
-                })
                 ingredienti_list.append(f"{new_qty:g}{item['unita']} {item['nome']}")
                 
             st.write("")
             st.info(f"⚖️ **Peso Totale del Vassoio:** {m_peso_tot:.1f} g")
-            cm_cal, cm2, cm1, cm3, cm4, cm5 = st.columns(6)
-            cm_cal.markdown(f"**Calorie**\n\n{m_cal_tot:.0f} kcal")
-            cm2.markdown(f"**Carb.**\n\n{m_c_tot:.1f} g")
-            cm1.markdown(f"**Prot.**\n\n{m_p_tot:.1f} g")
-            cm3.markdown(f"**Grassi**\n\n{m_f_tot:.1f} g")
-            cm4.markdown(f"**Saturi**\n\n{m_sat_tot:.1f} g")
-            cm5.markdown(f"**Fibre**\n\n{m_fib_tot:.1f} g")
+            
+            # NUOVO: LOGICA DI PORZIONAMENTO DEL VASSOIO
+            st.markdown("#### 🥧 Resa e Porzioni del Vassoio")
+            div_porzioni = st.number_input("In quante porzioni totali dividi questo vassoio?", min_value=1.0, step=1.0, value=1.0)
+            
+            # Calcolo dei macros per SINGOLA porzione
+            p_peso = m_peso_tot / div_porzioni
+            p_cal = m_cal_tot / div_porzioni
+            p_c = m_c_tot / div_porzioni
+            p_p = m_p_tot / div_porzioni
+            p_f = m_f_tot / div_porzioni
+            p_sat = m_sat_tot / div_porzioni
+            p_fib = m_fib_tot / div_porzioni
+
+            if div_porzioni > 1:
+                st.success(f"💡 Hai diviso il vassoio. Ogni singola porzione peserà **{p_peso:.1f} g** e avrà i seguenti valori:")
+                cm_cal, cm2, cm1, cm3, cm4, cm5 = st.columns(6)
+                cm_cal.markdown(f"**Calorie**\n\n{p_cal:.0f} kcal")
+                cm2.markdown(f"**Carb.**\n\n{p_c:.1f} g")
+                cm1.markdown(f"**Prot.**\n\n{p_p:.1f} g")
+                cm3.markdown(f"**Grassi**\n\n{p_f:.1f} g")
+                cm4.markdown(f"**Saturi**\n\n{p_sat:.1f} g")
+                cm5.markdown(f"**Fibre**\n\n{p_fib:.1f} g")
+            else:
+                cm_cal, cm2, cm1, cm3, cm4, cm5 = st.columns(6)
+                cm_cal.markdown(f"**Calorie**\n\n{m_cal_tot:.0f} kcal")
+                cm2.markdown(f"**Carb.**\n\n{m_c_tot:.1f} g")
+                cm1.markdown(f"**Prot.**\n\n{m_p_tot:.1f} g")
+                cm3.markdown(f"**Grassi**\n\n{m_f_tot:.1f} g")
+                cm4.markdown(f"**Saturi**\n\n{m_sat_tot:.1f} g")
+                cm5.markdown(f"**Fibre**\n\n{m_fib_tot:.1f} g")
             
             st.divider()
-            nome_gruppo = st.text_input("Vuoi raggruppare questi elementi? Inserisci un nome (es. 'Mix Proteico') o lascia vuoto:", "")
+            
+            st.markdown("### 2️⃣ Salvataggio")
+            nome_gruppo = st.text_input("Vuoi raggruppare questi elementi in un'unica voce? Inserisci un nome (es. 'Mix Proteico') o lascia vuoto per salvarli separatamente:", "")
+            
+            # Chiediamo quante porzioni ha mangiato, coerentemente con la divisione appena fatta
+            porz_mangiate = st.number_input(f"Quante porzioni hai mangiato ora? (su {div_porzioni:.1f} totali)", min_value=0.1, max_value=float(div_porzioni), value=1.0, step=0.5)
+            rt_consumo_vassoio = porz_mangiate / div_porzioni
             
             if nome_gruppo.strip():
+                # Salva come un'unica riga "Gruppo" calcolata sulla base di quanto ha mangiato
                 dettaglio = ", ".join(ingredienti_list)
                 rows_to_add.append({
                     "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
-                    "Elemento": f"📦 {nome_gruppo.strip()} [{dettaglio}]", "Quantita": 1.0, "Unita": "porz",
-                    "Calorie": m_cal_tot, "Carboidrati": m_c_tot, "Proteine": m_p_tot,
-                    "Grassi": m_f_tot, "Saturi": m_sat_tot, "Fibre": m_fib_tot, "User_ID": USER_ID
+                    "Elemento": f"📦 {nome_gruppo.strip()} [{dettaglio}]", "Quantita": porz_mangiate, "Unita": "porz",
+                    "Calorie": m_cal_tot * rt_consumo_vassoio, "Carboidrati": m_c_tot * rt_consumo_vassoio, "Proteine": m_p_tot * rt_consumo_vassoio,
+                    "Grassi": m_f_tot * rt_consumo_vassoio, "Saturi": m_sat_tot * rt_consumo_vassoio, "Fibre": m_fib_tot * rt_consumo_vassoio, "User_ID": USER_ID
                 })
             else:
-                rows_to_add.extend(temp_rows)
+                # Salva i singoli elementi, ma applicando il "rateo di consumo" se il vassoio è stato diviso e mangiato solo in parte
+                for item in st.session_state.diario_multi_items:
+                    cal, p, c, f, fib, sat, _, _, _ = MACROS_DB[item["nome"]]
+                    peso_effettivo = item['quantita'] * item.get("peso_pz", 0.0) if item["unita"] == "pz" else item['quantita']
+                    
+                    cal_i = (cal / 100) * peso_effettivo * rt_consumo_vassoio
+                    c_i = (c / 100) * peso_effettivo * rt_consumo_vassoio
+                    p_i = (p / 100) * peso_effettivo * rt_consumo_vassoio
+                    f_i = (f / 100) * peso_effettivo * rt_consumo_vassoio
+                    sat_i = (sat / 100) * peso_effettivo * rt_consumo_vassoio
+                    fib_i = (fib / 100) * peso_effettivo * rt_consumo_vassoio
+                    
+                    p_cotto_str = f" (Cotto)" if item.get("is_cotto") else ""
+                    qty_finale_salvata = item['quantita'] * rt_consumo_vassoio
+                    
+                    rows_to_add.append({
+                        "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
+                        "Elemento": f"🛒 {item['nome']}{p_cotto_str}", "Quantita": qty_finale_salvata, "Unita": item['unita'],
+                        "Calorie": cal_i, "Carboidrati": c_i, "Proteine": p_i,
+                        "Grassi": f_i, "Saturi": sat_i, "Fibre": fib_i, "User_ID": USER_ID
+                    })
                 
             ready_to_add = True
 
@@ -1680,4 +1739,5 @@ elif pagina_corrente == "🗄️ Database Prodotti":
                     st.rerun()
 
 st.markdown("<br><br><div style='text-align: center; color: gray;'><small>⚡ Powerd by iannovins</small></div>", unsafe_allow_html=True)
+
 
