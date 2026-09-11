@@ -1436,39 +1436,91 @@ elif pagina_corrente == "📅 Diario Alimentare":
             
             st.info(f"⚖️ **Report:** Peso a crudo: **{w_raw_tot:.1f} g** | Cotto/Finito: **{peso_cotto_libero:.1f} g**")
             
-            st.markdown("### 2️⃣ Quanto ne hai mangiato?")
-            c_mod1, c_mod2 = st.columns(2)
-            tipo_ins_lib = c_mod1.radio("Scegli come inserire la quantità consumata:", ["In Porzioni (Frazione)", "Grammi esatti"], key="rad_lib")
+            st.markdown("#### 🥧 Resa e Porzioni")
             
-            if tipo_ins_lib == "In Porzioni (Frazione)":
-                porzioni_tot_lib = c_mod1.number_input("Quante porzioni totali hai ottenuto?", min_value=1.0, value=1.0)
-                qta_val = c_mod2.number_input("Numero di porzioni mangiate", min_value=0.1, step=0.5, value=1.0, key="num_p_lib")
-                rt_consumo = qta_val / porzioni_tot_lib
-                valore_salvataggio = qta_val
-                unita_salvataggio = "porzioni"
+            num_porzioni_lib = st.number_input("In quante porzioni totali dividi questa preparazione? (max 5)", min_value=1, max_value=5, step=1, value=1, key="num_porz_lib")
+            
+            porzioni_perc_lib = []
+            perc_rimanente_lib = 100.0
+            
+            if num_porzioni_lib == 1:
+                porzioni_perc_lib = [100.0]
+                st.info("La preparazione è considerata come 1 singola porzione (100%).")
             else:
-                peso_consumato = c_mod2.number_input("Grammi esatti mangiati (g)", min_value=1.0, step=10.0, value=float(peso_cotto_libero), key="num_g_lib")
-                rt_consumo = peso_consumato / peso_cotto_libero if peso_cotto_libero > 0 else 0
-                valore_salvataggio = peso_consumato
-                unita_salvataggio = "g"
+                st.write("Imposta la % per ogni porzione (l'ultima è calcolata in automatico):")
+                cols_perc_lib = st.columns(num_porzioni_lib)
+                somma_parziale_lib = 0.0
                 
-            m_cal_disp = m_cal_tot * rt_consumo
-            m_p_disp = m_p_tot * rt_consumo
-            m_c_disp = m_c_tot * rt_consumo
-            m_f_disp = m_f_tot * rt_consumo
-            m_sat_disp = m_sat_tot * rt_consumo
-            m_fib_disp = m_fib_tot * rt_consumo
-            
-            dettaglio_lib = ", ".join([f"{ing['quantita']:g}{ing['unita']} {ing['nome']}" for ing in st.session_state.temp_recipe_diario])
-            elemento_inserito = f"⏱️ {nome_libera} [{dettaglio_lib}]"
+                for i in range(num_porzioni_lib - 1):
+                    with cols_perc_lib[i]:
+                        default_p_lib = 100.0 / num_porzioni_lib
+                        p_val_lib = st.number_input(f"% Porz. {i+1}", min_value=0.0, max_value=100.0, value=float(default_p_lib), step=1.0, key=f"perc_p_lib_{i}")
+                        porzioni_perc_lib.append(p_val_lib)
+                        somma_parziale_lib += p_val_lib
+                
+                perc_rimanente_lib = 100.0 - somma_parziale_lib
+                porzioni_perc_lib.append(perc_rimanente_lib)
+                
+                with cols_perc_lib[-1]:
+                    st.text_input(f"% Porz. {num_porzioni_lib} (Resto)", value=f"{perc_rimanente_lib:.1f}%", disabled=True, key=f"resto_lib_txt")
+                
+                if perc_rimanente_lib < 0:
+                    st.error("⚠️ Attenzione: La somma delle percentuali supera il 100%. Riduci i valori.")
 
-            rows_to_add.append({
-                "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
-                "Elemento": elemento_inserito, "Quantita": valore_salvataggio, "Unita": unita_salvataggio,
-                "Calorie": m_cal_disp, "Carboidrati": m_c_disp, "Proteine": m_p_disp,
-                "Grassi": m_f_disp, "Saturi": m_sat_disp, "Fibre": m_fib_disp, "User_ID": USER_ID
-            })
-            ready_to_add = True
+            st.divider()
+            
+            st.markdown("### 2️⃣ Quali porzioni stai mangiando?")
+            
+            porzioni_selezionate_lib = []
+            cols_chk_lib = st.columns(num_porzioni_lib)
+            
+            for i in range(num_porzioni_lib):
+                perc = porzioni_perc_lib[i]
+                with cols_chk_lib[i]:
+                    if perc >= 0:
+                        mangio = st.checkbox(f"🍽️ Mangio Porz. {i+1} ({perc:.1f}%)", value=(i==0), key=f"mangio_chk_lib_{i}")
+                        if mangio:
+                            porzioni_selezionate_lib.append(i)
+                        
+                        p_peso = peso_cotto_libero * (perc / 100.0)
+                        p_cal = m_cal_tot * (perc / 100.0)
+                        st.caption(f"⚖️ {p_peso:.1f} g\n🔥 {p_cal:.0f} kcal")
+                    else:
+                        st.error("Errore %")
+
+            tot_perc_consumata_lib = sum([porzioni_perc_lib[i] for i in porzioni_selezionate_lib])
+            rt_consumo_lib = tot_perc_consumata_lib / 100.0
+            
+            st.write("")
+            if rt_consumo_lib > 0 and perc_rimanente_lib >= 0:
+                st.success(f"💡 Stai registrando nel diario il **{tot_perc_consumata_lib:.1f}%** dell'intera preparazione (Peso consumato: **{peso_cotto_libero * rt_consumo_lib:.1f} g**)")
+                cm_cal, cm2, cm1, cm3, cm4, cm5 = st.columns(6)
+                cm_cal.markdown(f"**Calorie**\n\n{m_cal_tot * rt_consumo_lib:.0f} kcal")
+                cm2.markdown(f"**Carb.**\n\n{m_c_tot * rt_consumo_lib:.1f} g")
+                cm1.markdown(f"**Prot.**\n\n{m_p_tot * rt_consumo_lib:.1f} g")
+                cm3.markdown(f"**Grassi**\n\n{m_f_tot * rt_consumo_lib:.1f} g")
+                cm4.markdown(f"**Saturi**\n\n{m_sat_tot * rt_consumo_lib:.1f} g")
+                cm5.markdown(f"**Fibre**\n\n{m_fib_tot * rt_consumo_lib:.1f} g")
+            elif perc_rimanente_lib < 0:
+                st.error("Impossibile procedere: sistema le percentuali delle porzioni.")
+            else:
+                st.warning("Seleziona almeno una porzione da mangiare tra quelle disponibili.")
+            
+            st.divider()
+            
+            st.markdown("### 3️⃣ Salvataggio")
+            
+            if rt_consumo_lib > 0 and perc_rimanente_lib >= 0:
+                dettaglio_lib = ", ".join([f"{ing['quantita']:g}{ing['unita']} {ing['nome']}" for ing in st.session_state.temp_recipe_diario])
+                elemento_inserito = f"⏱️ {nome_libera} [{dettaglio_lib}]"
+
+                rows_to_add.append({
+                    "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
+                    "Elemento": elemento_inserito, "Quantita": tot_perc_consumata_lib, "Unita": "%",
+                    "Calorie": m_cal_tot * rt_consumo_lib, "Carboidrati": m_c_tot * rt_consumo_lib, "Proteine": m_p_tot * rt_consumo_lib,
+                    "Grassi": m_f_tot * rt_consumo_lib, "Saturi": m_sat_tot * rt_consumo_lib, "Fibre": m_fib_tot * rt_consumo_lib, "User_ID": USER_ID
+                })
+                ready_to_add = True
 
     # =========================================================
     # BOTTONE SALVATAGGIO UNIFICATO NEL DIARIO
@@ -1790,3 +1842,4 @@ elif pagina_corrente == "🗄️ Database Prodotti":
                     st.rerun()
 
 st.markdown("<br><br><div style='text-align: center; color: gray;'><small>⚡ Powerd by iannovins</small></div>", unsafe_allow_html=True)
+
