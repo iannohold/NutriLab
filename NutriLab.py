@@ -1664,17 +1664,28 @@ elif pagina_corrente == "📅 Diario Alimentare":
             
             # 1. Filtro Date Dinamico
             c_date1, c_date2 = st.columns([1, 2])
-            rep_mode = c_date1.radio("Periodo di analisi:", ["Ultimi 7 gg", "Ultimi 30 gg", "Personalizzato"], horizontal=True)
+            rep_mode = c_date1.radio(
+                "Periodo di analisi:", 
+                ["Oggi", "Ieri", "Ultimi 7 gg", "Ultimi 30 gg", "Personalizzato"], 
+                index=0, 
+                horizontal=True
+            )
             
             oggi = pd.to_datetime('today').date()
-            if rep_mode == "Ultimi 7 gg":
+            if rep_mode == "Oggi":
+                start_date = oggi
+                end_date = oggi
+            elif rep_mode == "Ieri":
+                start_date = oggi - datetime.timedelta(days=1)
+                end_date = oggi - datetime.timedelta(days=1)
+            elif rep_mode == "Ultimi 7 gg":
                 start_date = oggi - datetime.timedelta(days=7)
                 end_date = oggi
             elif rep_mode == "Ultimi 30 gg":
                 start_date = oggi - datetime.timedelta(days=30)
                 end_date = oggi
             else:
-                sel_dates = c_date2.date_input("Seleziona intervallo (Inizio - Fine):", [oggi - datetime.timedelta(days=7), oggi])
+                sel_dates = c_date2.date_input("Seleziona intervallo (Inizio - Fine):", [oggi, oggi])
                 if len(sel_dates) == 2:
                     start_date, end_date = sel_dates
                 else:
