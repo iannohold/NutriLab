@@ -1624,7 +1624,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
         st.write("")
 
         # 2. STORICO E REPORT
-        tab_storico, tab_report = st.tabs(["🗓️ Storico Precedente", "📈 Statistiche e Report"])
+        tab_storico, tab_report = st.tabs(["🗓️ Storico Giornaliero", "📈 Statistiche e Report"])
 
         with tab_storico:
             altri_giorni = df_diario[df_diario['Data'] != str(data_sel)]['Data'].dropna().unique()
@@ -1778,10 +1778,40 @@ elif pagina_corrente == "📅 Diario Alimentare":
                         st.plotly_chart(fig_line, use_container_width=True)
                         
                     # 5. Tabella di Esportazione/Dettaglio
-                    with st.expander("📅 Vedi Tabella Dettaglio Giornaliero"):
+                    with st.expander("📅 Vedi Tabella Sintetica Giornaliera"):
                         df_day = df_rep.groupby('Data')[['Calorie', 'Carboidrati', 'Proteine', 'Grassi']].sum().reset_index()
                         df_day = df_day.sort_values('Data', ascending=False)
                         st.dataframe(df_day.style.format({"Calorie": "{:.0f}", "Carboidrati": "{:.1f}", "Proteine": "{:.1f}", "Grassi": "{:.1f}"}), use_container_width=True, hide_index=True)
+
+                    st.divider()
+
+                    # 6. Dettaglio Completo dei Pasti (Copia identica dello Storico Giornaliero)
+                    st.markdown("### 📖 Dettaglio Completo dei Pasti Selezionati")
+                    giorni_report = df_rep['Data'].dropna().unique()
+                    giorni_report_sorted = sorted(giorni_report, reverse=True)
+                    
+                    for d in giorni_report_sorted:
+                        df_giorno = df_rep[df_rep['Data'] == d]
+                        t_cal_storico = df_giorno['Calorie'].sum()
+                        d_obj = pd.to_datetime(d).strftime('%d/%m/%Y')
+                        
+                        with st.expander(f"📅 {d_obj} - Totale: {t_cal_storico:.0f} kcal"):
+                            st.markdown(f"**Macros:** Carboidrati: {df_giorno['Carboidrati'].sum():.1f}g | Proteine: {df_giorno['Proteine'].sum():.1f}g | Grassi: {df_giorno['Grassi'].sum():.1f}g")
+                            st.write("")
+                            for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
+                                df_pasto_s = df_giorno[(df_giorno['Pasto'] == pasto) | (df_giorno['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
+                                if not df_pasto_s.empty:
+                                    t_cal_s = df_pasto_s['Calorie'].sum()
+                                    t_c_s = df_pasto_s['Carboidrati'].sum()
+                                    t_p_s = df_pasto_s['Proteine'].sum()
+                                    t_f_s = df_pasto_s['Grassi'].sum()
+                                    
+                                    with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_s:.0f} kcal | C: {t_c_s:.1f}g | P: {t_p_s:.1f}g | G: {t_f_s:.1f}g)", expanded=False):
+                                        for _, row in df_pasto_s.iterrows():
+                                            c_text_s, c_del_s = st.columns([0.90, 0.10])
+                                            c_text_s.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
+                                            if c_del_s.button("❌", key=f"del_report_{row['ID']}"):
+                                                st.info("Eliminazione veloce dal report. Usa la selezione del Giorno Attivo (in alto) per le conferme definitive.")
 
                 else:
                     st.warning("Nessun dato registrato per i pasti selezionati in questo periodo.")
