@@ -1,7 +1,8 @@
-streamlit
+sstreamlit
+st-gsheets-connection
 pandas
-fpdf2
 requests
+fpdf2
 recipe-scrapers
 openpyxl
-st-gsheets-connection
+plotly
