@@ -17,7 +17,7 @@ st.set_page_config(page_title="NutriLab", page_icon="🧪", layout="wide")
 # Definisci qui i tuoi utenti. "vincenzo" è impostato come Admin.
 UTENTI = {
     "vins": {"password": "admin!", "nome": "Vincenzo", "is_admin": True},
-    "silvia": {"password": "user1!", "nome": "Silvia", "is_admin": False},
+    "monella": {"password": "user1!", "nome": "Silvia", "is_admin": False},
     "ospite": {"password": "test!", "nome": "Utente Ospite", "is_admin": False}
 }
 
