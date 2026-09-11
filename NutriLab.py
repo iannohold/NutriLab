@@ -330,7 +330,7 @@ if st.sidebar.button("🚪 Logout", use_container_width=True):
     st.rerun()
 
 st.sidebar.divider()
-pagina_corrente = st.sidebar.radio("Scegli l'area di lavoro:", ["🧪 Laboratorio Ricette", "📅 Diario Alimentare", "🗄️ Database Prodotti"])
+pagina_corrente = st.sidebar.radio("Scegli l'area di lavoro:", ["🧪 Laboratorio Ricette", "📅 Diario Alimentare", "🗄️ Database Prodotti", "👤 Profilo e Obiettivi"])
 st.sidebar.divider()
 st.sidebar.markdown("<div style='text-align: center; color: gray;'><small>⚡ Powerd by iannovins</small></div>", unsafe_allow_html=True)
 
@@ -936,12 +936,23 @@ elif pagina_corrente == "📅 Diario Alimentare":
     st.markdown("#### *Tieni traccia dei tuoi macros giornalieri.* 📊")
     st.write("")
 
+    # --- RECUPERO OBIETTIVI AL TOP DELLA PAGINA (Per salvarli nel diario) ---
+    tgt_cal = tgt_c = tgt_p = tgt_f = 0.0
+    try:
+        df_prof = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Profilo", ttl=60)
+        u_prof = df_prof[df_prof['User_ID'] == USER_ID]
+        if not u_prof.empty:
+            tgt_cal = float(u_prof.iloc[0].get('TGT_Cal', 0) or 0)
+            tgt_c = float(u_prof.iloc[0].get('TGT_C', 0) or 0)
+            tgt_p = float(u_prof.iloc[0].get('TGT_P', 0) or 0)
+            tgt_f = float(u_prof.iloc[0].get('TGT_F', 0) or 0)
+    except: pass
+
     c1, c2 = st.columns(2)
     with c1:
         data_sel = st.date_input("Data di riferimento", pd.to_datetime('today'))
         
         ora_attuale = pd.Timestamp.now(tz='Europe/Rome').time()
-            
         t_colazione = datetime.time(9, 30)
         t_spuntino1 = datetime.time(12, 0)
         t_pranzo = datetime.time(15, 0)
@@ -974,8 +985,6 @@ elif pagina_corrente == "📅 Diario Alimentare":
         try:
             df_ric_cloud = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Ricette")
             if 'User_ID' not in df_ric_cloud.columns: df_ric_cloud['User_ID'] = ADMIN_ID
-            
-            # Per il diario mostriamo SOLO le ricette che appartengono all'utente
             df_ric_cloud = df_ric_cloud[df_ric_cloud['User_ID'] == USER_ID]
             ricette_list = df_ric_cloud['Nome Ricetta'].dropna().tolist()
         except:
@@ -991,45 +1000,24 @@ elif pagina_corrente == "📅 Diario Alimentare":
             st.markdown("### 1️⃣ La preparazione di oggi")
             with st.expander("🛠️ Modifica ingredienti crudi (solo per questo pasto)", expanded=False):
                 mod_qty_raw = {}
-                mod_peso_pz = {} # NUOVO: per sovrascrivere il peso di ogni singolo pezzo
-                
+                mod_peso_pz = {}
                 for idx, row in df_r.iterrows():
                     c1_r, c2_r = st.columns([2, 1]) if row['Unita'] == 'pz' else st.columns([1, 0.01])
                     with c1_r:
-                        mod_qty_raw[idx] = st.number_input(
-                            f"{row['Nome']} ({row['Unita']}) a crudo", 
-                            min_value=0.0, 
-                            value=float(row['Quantita']), 
-                            step=1.0 if row['Unita'] == 'pz' else 5.0,
-                            key=f"mod_raw_{idx}"
-                        )
+                        mod_qty_raw[idx] = st.number_input(f"{row['Nome']} ({row['Unita']}) a crudo", min_value=0.0, value=float(row['Quantita']), step=1.0 if row['Unita'] == 'pz' else 5.0, key=f"mod_raw_{idx}")
                     if row['Unita'] == 'pz':
-                        with c2_r:
-                            mod_peso_pz[idx] = st.number_input(
-                                f"Peso 1 pz (g)", 
-                                min_value=0.1, 
-                                value=float(row.get('Peso_pz', 100.0)), 
-                                step=1.0,
-                                key=f"mod_pz_{idx}"
-                            )
-                    else:
-                        mod_peso_pz[idx] = 0.0
+                        with c2_r: mod_peso_pz[idx] = st.number_input(f"Peso 1 pz (g)", min_value=0.1, value=float(row.get('Peso_pz', 100.0)), step=1.0, key=f"mod_pz_{idx}")
+                    else: mod_peso_pz[idx] = 0.0
             
-            new_w_impasto_raw = 0.0
-            new_w_altri_raw = 0.0
-            new_m_cal_tot = new_m_p_tot = new_m_c_tot = new_m_f_tot = new_m_sat_tot = new_m_fib_tot = 0.0
+            new_w_impasto_raw = new_w_altri_raw = new_m_cal_tot = new_m_p_tot = new_m_c_tot = new_m_f_tot = new_m_sat_tot = new_m_fib_tot = 0.0
             variante = False
-            
             for idx, row in df_r.iterrows():
                 actual_qta = mod_qty_raw[idx]
                 if abs(actual_qta - float(row['Quantita'])) > 0.01: variante = True
-                
                 if actual_qta > 0:
                     u = str(row['Unita']).strip()
-                    # Usa il peso_pz appena sovrascritto se è un pezzo
                     pz_w = mod_peso_pz[idx] if u == 'pz' else 0.0
                     w_ing_raw = actual_qta * pz_w if u == 'pz' else actual_qta
-                    
                     if str(row.get('Utilizzo', 'Impasto')) == 'Impasto': new_w_impasto_raw += w_ing_raw
                     else: new_w_altri_raw += w_ing_raw
                     
@@ -1043,8 +1031,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
             r_cottura = bool(df_r.iloc[0].get('Cottura_Richiesta', False))
             if r_cottura:
                 if str(df_r.iloc[0].get('Cottura_TipoResa', '')) == "Usa % di stima":
-                    if 'Cottura_Variazione' in df_r.columns: var_cott_db = float(df_r.iloc[0]['Cottura_Variazione'])
-                    else: var_cott_db = -float(df_r.iloc[0].get('Cottura_Calo', 15.0))
+                    var_cott_db = float(df_r.iloc[0]['Cottura_Variazione']) if 'Cottura_Variazione' in df_r.columns else -float(df_r.iloc[0].get('Cottura_Calo', 15.0))
                     p_cot_new = new_w_impasto_raw * (1 + var_cott_db / 100.0)
                 else:
                     vecchio_impasto_raw = float(df_r.iloc[0].get('Cottura_QtaTeglia', 100.0))
@@ -1070,58 +1057,38 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 qta_val = c_mod2.number_input("Numero di porzioni mangiate", min_value=0.1, step=0.5, value=1.0)
                 rt_consumo = qta_val / porz_orig
                 peso_consumato = peso_finale_ricetta * rt_consumo
-                valore_salvataggio = qta_val
-                unita_salvataggio = "porzioni"
+                valore_salvataggio = qta_val; unita_salvataggio = "porzioni"
                 st.caption(f"💡 Stai registrando **{peso_consumato:.1f} g** complessivi.")
             else:
                 peso_consumato = c_mod2.number_input("Grammi esatti mangiati (g)", min_value=1.0, step=10.0, value=float(peso_singola_porzione))
                 rt_consumo = peso_consumato / peso_finale_ricetta if peso_finale_ricetta > 0 else 0
-                valore_salvataggio = peso_consumato
-                unita_salvataggio = "g"
+                valore_salvataggio = peso_consumato; unita_salvataggio = "g"
                 st.caption(f"💡 Stai registrando **{peso_consumato:.1f} g** complessivi.")
                 
-            m_cal_disp = new_m_cal_tot * rt_consumo
-            m_p_disp = new_m_p_tot * rt_consumo
-            m_c_disp = new_m_c_tot * rt_consumo
-            m_f_disp = new_m_f_tot * rt_consumo
-            m_sat_disp = new_m_sat_tot * rt_consumo
-            m_fib_disp = new_m_fib_tot * rt_consumo
-            
+            m_cal_disp = new_m_cal_tot * rt_consumo; m_p_disp = new_m_p_tot * rt_consumo; m_c_disp = new_m_c_tot * rt_consumo
+            m_f_disp = new_m_f_tot * rt_consumo; m_sat_disp = new_m_sat_tot * rt_consumo; m_fib_disp = new_m_fib_tot * rt_consumo
             elemento_inserito = f"🍽️ {ric_scelta} (Variante)" if variante else f"🍽️ {ric_scelta}"
             
             st.write("")
             st.markdown(f"**Valori Nutrizionali per la quantità consumata ({peso_consumato:.1f} g):**")
             cm_cal, cm2, cm1, cm3, cm4, cm5 = st.columns(6)
-            cm_cal.markdown(f"**Calorie**\n\n{m_cal_disp:.0f} kcal")
-            cm2.markdown(f"**Carb.**\n\n{m_c_disp:.1f} g")
-            cm1.markdown(f"**Prot.**\n\n{m_p_disp:.1f} g")
-            cm3.markdown(f"**Grassi**\n\n{m_f_disp:.1f} g")
-            cm4.markdown(f"**Saturi**\n\n{m_sat_disp:.1f} g")
-            cm5.markdown(f"**Fibre**\n\n{m_fib_disp:.1f} g")
+            cm_cal.markdown(f"**Calorie**\n\n{m_cal_disp:.0f} kcal"); cm2.markdown(f"**Carb.**\n\n{m_c_disp:.1f} g")
+            cm1.markdown(f"**Prot.**\n\n{m_p_disp:.1f} g"); cm3.markdown(f"**Grassi**\n\n{m_f_disp:.1f} g")
+            cm4.markdown(f"**Saturi**\n\n{m_sat_disp:.1f} g"); cm5.markdown(f"**Fibre**\n\n{m_fib_disp:.1f} g")
 
             rows_to_add.append({
-                "ID": uuid.uuid4().hex,
-                "Data": str(data_sel),
-                "Pasto": pasto_sel,
-                "Elemento": elemento_inserito,
-                "Quantita": valore_salvataggio,
-                "Unita": unita_salvataggio,
-                "Calorie": m_cal_disp,
-                "Carboidrati": m_c_disp,
-                "Proteine": m_p_disp,
-                "Grassi": m_f_disp,
-                "Saturi": m_sat_disp,
-                "Fibre": m_fib_disp,
-                "User_ID": USER_ID
+                "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel, "Elemento": elemento_inserito,
+                "Quantita": valore_salvataggio, "Unita": unita_salvataggio, "Calorie": m_cal_disp, "Carboidrati": m_c_disp, 
+                "Proteine": m_p_disp, "Grassi": m_f_disp, "Saturi": m_sat_disp, "Fibre": m_fib_disp, "User_ID": USER_ID,
+                "TGT_Cal": tgt_cal, "TGT_C": tgt_c, "TGT_P": tgt_p, "TGT_F": tgt_f
             })
             ready_to_add = True
 
     # ---------------------------------------------------------
-    # FLUSSO 2: ALIMENTI (SINGOLI O MULTIPLI) - CON DIVISIONE
+    # FLUSSO 2: ALIMENTI (SINGOLI O MULTIPLI)
     # ---------------------------------------------------------
     elif tipo_inserimento_diario == "🛒 Alimenti (Singoli o Multipli)":
         st.markdown("### 1️⃣ Componi il pasto")
-        
         def update_vassoio_from_selection():
             ing = st.session_state.get("vassoio_ing_scelto")
             if ing and ing != "-- Seleziona --":
@@ -1132,27 +1099,21 @@ elif pagina_corrente == "📅 Diario Alimentare":
         c_ing, c_qta, c_unit, c_pz, c_btn = st.columns([3, 1, 1, 1, 1.5])
         ing_scelto = c_ing.selectbox("Cerca alimento:", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())), key="vassoio_ing_scelto", on_change=update_vassoio_from_selection)
         qta_val = c_qta.number_input("Quantità (a crudo)", min_value=0.0, step=10.0, key="vassoio_qta", value=None)
-        
         idx_u = ["g", "ml", "pz"].index(st.session_state.get("vassoio_unit", "g")) if st.session_state.get("vassoio_unit") in ["g", "ml", "pz"] else 0
         unit_val = c_unit.selectbox("Unità", options=["g", "ml", "pz"], key="vassoio_unit", index=idx_u)
         
         if unit_val == "pz": 
-            default_pz = 0.0
-            if ing_scelto != "-- Seleziona --" and ing_scelto in MACROS_DB:
-                default_pz = MACROS_DB[ing_scelto][7]
+            default_pz = MACROS_DB[ing_scelto][7] if ing_scelto != "-- Seleziona --" and ing_scelto in MACROS_DB else 0.0
             pz_w = c_pz.number_input("Peso 1pz (g) [da DB]", min_value=0.0, step=1.0, value=float(default_pz), key="vassoio_pz_w")
-        else: 
-            pz_w = 0.0
+        else: pz_w = 0.0
 
         mostra_cottura = st.checkbox("🔥 Applica calo/aumento peso cottura", key="chk_cotto")
-        
         var_cottura_da_salvare = 0.0
         if mostra_cottura and ing_scelto != "-- Seleziona --":
             db_var = MACROS_DB[ing_scelto][6]
             if qta_val is not None and qta_val > 0:
                 peso_effettivo_crudo = qta_val * pz_w if unit_val == "pz" else qta_val
                 tipo_resa_vassoio = st.radio("Come vuoi calcolare la resa in cottura?", ["Usa % di stima", "Inserisci peso reale cotto"], horizontal=True)
-                
                 if tipo_resa_vassoio == "Usa % di stima":
                     c_var1, c_var2 = st.columns([1, 2])
                     var_cottura_da_salvare = c_var1.number_input("% Variazione Cottura", value=float(db_var), step=1.0, key=f"var_cott_{ing_scelto}")
@@ -1164,14 +1125,12 @@ elif pagina_corrente == "📅 Diario Alimentare":
                     peso_cotto_reale = c_var1.number_input("Peso cotto reale (g)", min_value=1.0, value=float(peso_stimato_cotto_default), step=10.0)
                     var_cottura_da_salvare = ((peso_cotto_reale - peso_effettivo_crudo) / peso_effettivo_crudo) * 100 if peso_effettivo_crudo > 0 else 0.0
                     c_var2.info(f"⚖️ Variazione rilevata: **{var_cottura_da_salvare:+.1f}%**")
-                    
                     if abs(var_cottura_da_salvare - db_var) > 0.1:
                         if st.button("💾 Aggiorna % nel Database Prodotti", key="btn_upd_var"):
                             with st.spinner("Aggiornamento in corso..."):
                                 cal_db, p_db, c_db, f_db, fib_db, sat_db, _, peso_db, unita_db = MACROS_DB[ing_scelto]
                                 salva_su_cloud(ing_scelto, cal_db, p_db, c_db, f_db, sat_db, fib_db, var_cottura_da_salvare, peso_db, unita_db)
-                                st.success("✅ Variazione di cottura aggiornata!")
-                                st.rerun()
+                                st.success("✅ Variazione aggiornata!"); st.rerun()
 
         st.session_state.var_cottura_computed = var_cottura_da_salvare
         
@@ -1182,7 +1141,6 @@ elif pagina_corrente == "📅 Diario Alimentare":
             pz_w_val = st.session_state.get("vassoio_pz_w", 0.0)
             cotto = st.session_state.get("chk_cotto", False)
             var_c = float(st.session_state.get("var_cottura_computed", 0.0))
-            
             if ing != "-- Seleziona --" and qta is not None and qta > 0 and unit is not None:
                 st.session_state.diario_multi_items.append({
                     "id": uuid.uuid4().hex, "nome": ing, "quantita": float(qta), "unita": unit,
@@ -1192,25 +1150,18 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 st.session_state.vassoio_qta = None
                 st.session_state.chk_cotto = False
 
-        can_add = True
-        if unit_val == "pz" and pz_w <= 0:
-            st.warning("⚠️ Hai selezionato 'pz' ma il peso medio è 0.")
-            can_add = False
-
+        can_add = not (unit_val == "pz" and pz_w <= 0)
         with c_btn:
             st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
             st.button("➕ Aggiungi al Vassoio", use_container_width=True, on_click=on_add_multi, disabled=(not can_add or qta_val is None or qta_val <= 0))
 
         if st.session_state.diario_multi_items:
             st.markdown("### 🛒 Nel tuo Vassoio:")
-            m_cal_tot = m_p_tot = m_c_tot = m_f_tot = m_sat_tot = m_fib_tot = 0.0
-            m_peso_tot = 0.0 
-            
+            m_cal_tot = m_p_tot = m_c_tot = m_f_tot = m_sat_tot = m_fib_tot = m_peso_tot = 0.0 
             ingredienti_list = []
             
             for i, item in enumerate(st.session_state.diario_multi_items):
                 c1, c2, c3 = st.columns([0.6, 0.3, 0.1])
-                
                 new_qty = c2.number_input("Q.tà", min_value=0.0, value=float(item['quantita']), step=1.0 if item['unita'] == 'pz' else 5.0, key=f"edit_multi_{item['id']}", label_visibility="collapsed")
                 if new_qty != item['quantita']: st.session_state.diario_multi_items[i]['quantita'] = new_qty
                 if c3.button("❌", key=f"del_multi_{item['id']}"):
@@ -1219,27 +1170,17 @@ elif pagina_corrente == "📅 Diario Alimentare":
 
                 cal, p, c, f, fib, sat, _, _, _ = MACROS_DB[item["nome"]]
                 peso_effettivo = new_qty * item.get("peso_pz", 0.0) if item["unita"] == "pz" else new_qty
+                cal_i = (cal / 100) * peso_effettivo; c_i = (c / 100) * peso_effettivo; p_i = (p / 100) * peso_effettivo
+                f_i = (f / 100) * peso_effettivo; sat_i = (sat / 100) * peso_effettivo; fib_i = (fib / 100) * peso_effettivo
                 
-                cal_i = (cal / 100) * peso_effettivo
-                c_i = (c / 100) * peso_effettivo
-                p_i = (p / 100) * peso_effettivo
-                f_i = (f / 100) * peso_effettivo
-                sat_i = (sat / 100) * peso_effettivo
-                fib_i = (fib / 100) * peso_effettivo
+                m_cal_tot += cal_i; m_p_tot += p_i; m_c_tot += c_i; m_f_tot += f_i; m_sat_tot += sat_i; m_fib_tot += fib_i
                 
-                m_cal_tot += cal_i
-                m_p_tot += p_i
-                m_c_tot += c_i
-                m_f_tot += f_i
-                m_sat_tot += sat_i
-                m_fib_tot += fib_i
-                
-                p_cotto_str = ""
                 if item.get("is_cotto"):
                     p_cotto = peso_effettivo * (1 + item.get("var_cottura", 0.0)/100)
                     p_cotto_str = f" (Cotto: {p_cotto:.1f} g)"
                     m_peso_tot += p_cotto
                 else:
+                    p_cotto_str = ""
                     m_peso_tot += peso_effettivo
                 
                 c1.write(f"🔹 **{item['nome']}** {p_cotto_str} ({item['unita']})")
@@ -1248,13 +1189,9 @@ elif pagina_corrente == "📅 Diario Alimentare":
             st.write("")
             st.info(f"⚖️ **Peso Totale del Vassoio:** {m_peso_tot:.1f} g")
             
-            # NUOVO: LOGICA DI PORZIONAMENTO AVANZATA DEL VASSOIO
             st.markdown("#### 🥧 Resa e Porzioni del Vassoio")
-            
             num_porzioni = st.number_input("In quante porzioni totali dividi questo vassoio? (max 5)", min_value=1, max_value=5, step=1, value=1)
-            
-            porzioni_perc = []
-            perc_rimanente = 100.0
+            porzioni_perc = []; perc_rimanente = 100.0
             
             if num_porzioni == 1:
                 porzioni_perc = [100.0]
@@ -1263,68 +1200,38 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 st.write("Imposta la % per ogni porzione (l'ultima è calcolata in automatico):")
                 cols_perc = st.columns(num_porzioni)
                 somma_parziale = 0.0
-                
                 for i in range(num_porzioni - 1):
                     with cols_perc[i]:
-                        default_p = 100.0 / num_porzioni
-                        p_val = st.number_input(f"% Porz. {i+1}", min_value=0.0, max_value=100.0, value=float(default_p), step=1.0, key=f"perc_p_{i}")
+                        p_val = st.number_input(f"% Porz. {i+1}", min_value=0.0, max_value=100.0, value=float(100.0/num_porzioni), step=1.0, key=f"perc_p_{i}")
                         porzioni_perc.append(p_val)
                         somma_parziale += p_val
-                
                 perc_rimanente = 100.0 - somma_parziale
                 porzioni_perc.append(perc_rimanente)
-                
-                with cols_perc[-1]:
-                    st.text_input(f"% Porz. {num_porzioni} (Resto)", value=f"{perc_rimanente:.1f}%", disabled=True)
-                
-                if perc_rimanente < 0:
-                    st.error("⚠️ Attenzione: La somma delle percentuali supera il 100%. Riduci i valori.")
+                with cols_perc[-1]: st.text_input(f"% Porz. {num_porzioni} (Resto)", value=f"{perc_rimanente:.1f}%", disabled=True)
+                if perc_rimanente < 0: st.error("⚠️ Attenzione: La somma supera il 100%. Riduci i valori.")
 
             st.divider()
-            
             st.markdown("### 2️⃣ Quali porzioni stai mangiando?")
-            
             porzioni_selezionate = []
             cols_chk = st.columns(num_porzioni)
-            
             for i in range(num_porzioni):
                 perc = porzioni_perc[i]
                 with cols_chk[i]:
                     if perc >= 0:
-                        # Di default spunta solo la prima porzione
                         mangio = st.checkbox(f"🍽️ Mangio Porz. {i+1} ({perc:.1f}%)", value=(i==0), key=f"mangio_chk_{i}")
-                        if mangio:
-                            porzioni_selezionate.append(i)
-                        
-                        # Mostra peso e calorie della singola porzione
-                        p_peso = m_peso_tot * (perc / 100.0)
-                        p_cal = m_cal_tot * (perc / 100.0)
-                        st.caption(f"⚖️ {p_peso:.1f} g\n🔥 {p_cal:.0f} kcal")
-                    else:
-                        st.error("Errore %")
+                        if mangio: porzioni_selezionate.append(i)
+                        st.caption(f"⚖️ {m_peso_tot*(perc/100.0):.1f} g\n🔥 {m_cal_tot*(perc/100.0):.0f} kcal")
 
             tot_perc_consumata = sum([porzioni_perc[i] for i in porzioni_selezionate])
             rt_consumo_vassoio = tot_perc_consumata / 100.0
             
             st.write("")
             if rt_consumo_vassoio > 0 and perc_rimanente >= 0:
-                st.success(f"💡 Stai registrando nel diario il **{tot_perc_consumata:.1f}%** dell'intero vassoio (Peso che andrai a consumare: **{m_peso_tot * rt_consumo_vassoio:.1f} g**)")
-                cm_cal, cm2, cm1, cm3, cm4, cm5 = st.columns(6)
-                cm_cal.markdown(f"**Calorie**\n\n{m_cal_tot * rt_consumo_vassoio:.0f} kcal")
-                cm2.markdown(f"**Carb.**\n\n{m_c_tot * rt_consumo_vassoio:.1f} g")
-                cm1.markdown(f"**Prot.**\n\n{m_p_tot * rt_consumo_vassoio:.1f} g")
-                cm3.markdown(f"**Grassi**\n\n{m_f_tot * rt_consumo_vassoio:.1f} g")
-                cm4.markdown(f"**Saturi**\n\n{m_sat_tot * rt_consumo_vassoio:.1f} g")
-                cm5.markdown(f"**Fibre**\n\n{m_fib_tot * rt_consumo_vassoio:.1f} g")
-            elif perc_rimanente < 0:
-                st.error("Impossibile procedere: sistema le percentuali delle porzioni.")
-            else:
-                st.warning("Seleziona almeno una porzione da mangiare tra quelle disponibili.")
+                st.success(f"💡 Stai registrando nel diario il **{tot_perc_consumata:.1f}%** dell'intero vassoio (Peso: **{m_peso_tot * rt_consumo_vassoio:.1f} g**)")
             
             st.divider()
-            
             st.markdown("### 3️⃣ Salvataggio")
-            nome_gruppo = st.text_input("Vuoi raggruppare questi elementi in un'unica voce? Inserisci un nome (es. 'Mix Proteico') o lascia vuoto per salvarli separatamente:", "")
+            nome_gruppo = st.text_input("Vuoi raggruppare questi elementi in un'unica voce? Inserisci un nome (es. 'Mix Proteico') o lascia vuoto:", "")
             
             if rt_consumo_vassoio > 0 and perc_rimanente >= 0:
                 if nome_gruppo.strip():
@@ -1333,34 +1240,26 @@ elif pagina_corrente == "📅 Diario Alimentare":
                         "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
                         "Elemento": f"📦 {nome_gruppo.strip()} [{dettaglio}]", "Quantita": tot_perc_consumata, "Unita": "%",
                         "Calorie": m_cal_tot * rt_consumo_vassoio, "Carboidrati": m_c_tot * rt_consumo_vassoio, "Proteine": m_p_tot * rt_consumo_vassoio,
-                        "Grassi": m_f_tot * rt_consumo_vassoio, "Saturi": m_sat_tot * rt_consumo_vassoio, "Fibre": m_fib_tot * rt_consumo_vassoio, "User_ID": USER_ID
+                        "Grassi": m_f_tot * rt_consumo_vassoio, "Saturi": m_sat_tot * rt_consumo_vassoio, "Fibre": m_fib_tot * rt_consumo_vassoio, "User_ID": USER_ID,
+                        "TGT_Cal": tgt_cal, "TGT_C": tgt_c, "TGT_P": tgt_p, "TGT_F": tgt_f
                     })
                 else:
                     for item in st.session_state.diario_multi_items:
                         cal, p, c, f, fib, sat, _, _, _ = MACROS_DB[item["nome"]]
                         peso_effettivo = item['quantita'] * item.get("peso_pz", 0.0) if item["unita"] == "pz" else item['quantita']
-                        
-                        cal_i = (cal / 100) * peso_effettivo * rt_consumo_vassoio
-                        c_i = (c / 100) * peso_effettivo * rt_consumo_vassoio
-                        p_i = (p / 100) * peso_effettivo * rt_consumo_vassoio
-                        f_i = (f / 100) * peso_effettivo * rt_consumo_vassoio
-                        sat_i = (sat / 100) * peso_effettivo * rt_consumo_vassoio
-                        fib_i = (fib / 100) * peso_effettivo * rt_consumo_vassoio
-                        
                         p_cotto_str = f" (Cotto)" if item.get("is_cotto") else ""
-                        qty_finale_salvata = item['quantita'] * rt_consumo_vassoio
-                        
                         rows_to_add.append({
                             "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
-                            "Elemento": f"🛒 {item['nome']}{p_cotto_str}", "Quantita": qty_finale_salvata, "Unita": item['unita'],
-                            "Calorie": cal_i, "Carboidrati": c_i, "Proteine": p_i,
-                            "Grassi": f_i, "Saturi": sat_i, "Fibre": fib_i, "User_ID": USER_ID
+                            "Elemento": f"🛒 {item['nome']}{p_cotto_str}", "Quantita": item['quantita'] * rt_consumo_vassoio, "Unita": item['unita'],
+                            "Calorie": (cal/100)*peso_effettivo*rt_consumo_vassoio, "Carboidrati": (c/100)*peso_effettivo*rt_consumo_vassoio, 
+                            "Proteine": (p/100)*peso_effettivo*rt_consumo_vassoio, "Grassi": (f/100)*peso_effettivo*rt_consumo_vassoio, 
+                            "Saturi": (sat/100)*peso_effettivo*rt_consumo_vassoio, "Fibre": (fib/100)*peso_effettivo*rt_consumo_vassoio, "User_ID": USER_ID,
+                            "TGT_Cal": tgt_cal, "TGT_C": tgt_c, "TGT_P": tgt_p, "TGT_F": tgt_f
                         })
-                    
                 ready_to_add = True
 
     # ---------------------------------------------------------
-    # FLUSSO 3: RICETTA LIBERA AL VOLO (NON SALVATA)
+    # FLUSSO 3: RICETTA LIBERA AL VOLO
     # ---------------------------------------------------------
     elif tipo_inserimento_diario == "⏱️ Ricetta Libera (Al volo)":
         st.write("Aggiungi gli ingredienti per calcolare una preparazione veloce.")
@@ -1379,19 +1278,15 @@ elif pagina_corrente == "📅 Diario Alimentare":
         unit_libera = c_unit.selectbox("Unità", options=["g", "ml", "pz"], key="unit_lib_val", index=idx_u_lib)
         
         if unit_libera == "pz": 
-            default_pz_lib = 0.0
-            if ing_libero != "-- Seleziona --" and ing_libero in MACROS_DB:
-                default_pz_lib = MACROS_DB[ing_libero][7]
+            default_pz_lib = MACROS_DB[ing_libero][7] if ing_libero != "-- Seleziona --" and ing_libero in MACROS_DB else 0.0
             pz_w_lib = c_pz.number_input("Peso 1pz (g)", min_value=0.0, step=1.0, value=float(default_pz_lib), key="lib_pz_w")
-        else: 
-            pz_w_lib = 0.0
+        else: pz_w_lib = 0.0
         
         def on_add_libero():
             ing = st.session_state.get("ing_lib_sel", "-- Seleziona --")
             qta = st.session_state.get("qta_lib_val")
             unit = st.session_state.get("unit_lib_val")
             pz_w_val = st.session_state.get("lib_pz_w", 0.0)
-            
             if ing != "-- Seleziona --" and qta is not None and qta > 0 and unit is not None:
                 st.session_state.temp_recipe_diario.append({
                     "id": uuid.uuid4().hex, "nome": ing, "quantita": float(qta),
@@ -1400,9 +1295,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 st.session_state.ing_lib_sel = "-- Seleziona --"
                 st.session_state.qta_lib_val = None
 
-        can_add_lib = True
-        if unit_libera == "pz" and pz_w_lib <= 0: can_add_lib = False
-
+        can_add_lib = not (unit_libera == "pz" and pz_w_lib <= 0)
         with c_btn:
             st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
             st.button("➕ Aggiungi Ingrediente", use_container_width=True, on_click=on_add_libero, disabled=(not can_add_lib or qta_libera is None or qta_libera <= 0))
@@ -1410,12 +1303,10 @@ elif pagina_corrente == "📅 Diario Alimentare":
         if st.session_state.temp_recipe_diario:
             st.markdown("---")
             w_raw_tot = m_cal_tot = m_p_tot = m_c_tot = m_f_tot = m_sat_tot = m_fib_tot = 0.0
-            
             for i, ing in enumerate(st.session_state.temp_recipe_diario):
                 c1, c2, c3 = st.columns([0.6, 0.3, 0.1])
                 c1.write(f"🔹 **{ing['nome']}** ({ing['unita']})")
                 new_qty = c2.number_input("Q.tà", min_value=0.0, value=float(ing['quantita']), step=1.0 if ing['unita'] == 'pz' else 5.0, key=f"edit_lib_{ing['id']}", label_visibility="collapsed")
-                
                 if new_qty != ing['quantita']: st.session_state.temp_recipe_diario[i]['quantita'] = new_qty
                 if c3.button("❌", key=f"del_lib_{ing['id']}"):
                     st.session_state.temp_recipe_diario = [item for item in st.session_state.temp_recipe_diario if item['id'] != ing['id']]
@@ -1423,103 +1314,55 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 
                 cal, p, c, f, fib, sat, _, _, _ = MACROS_DB[ing['nome']]
                 peso_eff = new_qty * ing.get("peso_pz", 0.0) if ing['unita'] == 'pz' else new_qty
-                
                 w_raw_tot += peso_eff
-                m_cal_tot += (cal / 100) * peso_eff
-                m_p_tot += (p / 100) * peso_eff
-                m_c_tot += (c / 100) * peso_eff
-                m_f_tot += (f / 100) * peso_eff
-                m_sat_tot += (sat / 100) * peso_eff
-                m_fib_tot += (fib / 100) * peso_eff
+                m_cal_tot += (cal/100)*peso_eff; m_p_tot += (p/100)*peso_eff; m_c_tot += (c/100)*peso_eff
+                m_f_tot += (f/100)*peso_eff; m_sat_tot += (sat/100)*peso_eff; m_fib_tot += (fib/100)*peso_eff
                 
             nome_libera = st.text_input("Dai un nome per ricordarla nel diario:", "Pasto al volo")
             peso_cotto_libero = st.number_input("Peso cotto finale", min_value=1.0, value=float(w_raw_tot))
-            
             st.info(f"⚖️ **Report:** Peso a crudo: **{w_raw_tot:.1f} g** | Cotto/Finito: **{peso_cotto_libero:.1f} g**")
             
             st.markdown("#### 🥧 Resa e Porzioni")
-            
-            num_porzioni_lib = st.number_input("In quante porzioni totali dividi questa preparazione? (max 5)", min_value=1, max_value=5, step=1, value=1, key="num_porz_lib")
-            
-            porzioni_perc_lib = []
-            perc_rimanente_lib = 100.0
+            num_porzioni_lib = st.number_input("In quante porzioni dividi questa preparazione? (max 5)", min_value=1, max_value=5, step=1, value=1, key="num_porz_lib")
+            porzioni_perc_lib = []; perc_rimanente_lib = 100.0
             
             if num_porzioni_lib == 1:
                 porzioni_perc_lib = [100.0]
-                st.info("La preparazione è considerata come 1 singola porzione (100%).")
             else:
-                st.write("Imposta la % per ogni porzione (l'ultima è calcolata in automatico):")
                 cols_perc_lib = st.columns(num_porzioni_lib)
                 somma_parziale_lib = 0.0
-                
                 for i in range(num_porzioni_lib - 1):
                     with cols_perc_lib[i]:
-                        default_p_lib = 100.0 / num_porzioni_lib
-                        p_val_lib = st.number_input(f"% Porz. {i+1}", min_value=0.0, max_value=100.0, value=float(default_p_lib), step=1.0, key=f"perc_p_lib_{i}")
+                        p_val_lib = st.number_input(f"% Porz. {i+1}", min_value=0.0, max_value=100.0, value=float(100.0/num_porzioni_lib), step=1.0, key=f"perc_p_lib_{i}")
                         porzioni_perc_lib.append(p_val_lib)
                         somma_parziale_lib += p_val_lib
-                
                 perc_rimanente_lib = 100.0 - somma_parziale_lib
                 porzioni_perc_lib.append(perc_rimanente_lib)
-                
-                with cols_perc_lib[-1]:
-                    st.text_input(f"% Porz. {num_porzioni_lib} (Resto)", value=f"{perc_rimanente_lib:.1f}%", disabled=True, key=f"resto_lib_txt")
-                
-                if perc_rimanente_lib < 0:
-                    st.error("⚠️ Attenzione: La somma delle percentuali supera il 100%. Riduci i valori.")
+                with cols_perc_lib[-1]: st.text_input(f"% Porz. {num_porzioni_lib} (Resto)", value=f"{perc_rimanente_lib:.1f}%", disabled=True, key=f"resto_lib_txt")
 
             st.divider()
-            
             st.markdown("### 2️⃣ Quali porzioni stai mangiando?")
-            
             porzioni_selezionate_lib = []
             cols_chk_lib = st.columns(num_porzioni_lib)
-            
             for i in range(num_porzioni_lib):
                 perc = porzioni_perc_lib[i]
                 with cols_chk_lib[i]:
                     if perc >= 0:
                         mangio = st.checkbox(f"🍽️ Mangio Porz. {i+1} ({perc:.1f}%)", value=(i==0), key=f"mangio_chk_lib_{i}")
-                        if mangio:
-                            porzioni_selezionate_lib.append(i)
-                        
-                        p_peso = peso_cotto_libero * (perc / 100.0)
-                        p_cal = m_cal_tot * (perc / 100.0)
-                        st.caption(f"⚖️ {p_peso:.1f} g\n🔥 {p_cal:.0f} kcal")
-                    else:
-                        st.error("Errore %")
+                        if mangio: porzioni_selezionate_lib.append(i)
+                        st.caption(f"⚖️ {peso_cotto_libero*(perc/100.0):.1f} g\n🔥 {m_cal_tot*(perc/100.0):.0f} kcal")
 
             tot_perc_consumata_lib = sum([porzioni_perc_lib[i] for i in porzioni_selezionate_lib])
             rt_consumo_lib = tot_perc_consumata_lib / 100.0
             
-            st.write("")
-            if rt_consumo_lib > 0 and perc_rimanente_lib >= 0:
-                st.success(f"💡 Stai registrando nel diario il **{tot_perc_consumata_lib:.1f}%** dell'intera preparazione (Peso consumato: **{peso_cotto_libero * rt_consumo_lib:.1f} g**)")
-                cm_cal, cm2, cm1, cm3, cm4, cm5 = st.columns(6)
-                cm_cal.markdown(f"**Calorie**\n\n{m_cal_tot * rt_consumo_lib:.0f} kcal")
-                cm2.markdown(f"**Carb.**\n\n{m_c_tot * rt_consumo_lib:.1f} g")
-                cm1.markdown(f"**Prot.**\n\n{m_p_tot * rt_consumo_lib:.1f} g")
-                cm3.markdown(f"**Grassi**\n\n{m_f_tot * rt_consumo_lib:.1f} g")
-                cm4.markdown(f"**Saturi**\n\n{m_sat_tot * rt_consumo_lib:.1f} g")
-                cm5.markdown(f"**Fibre**\n\n{m_fib_tot * rt_consumo_lib:.1f} g")
-            elif perc_rimanente_lib < 0:
-                st.error("Impossibile procedere: sistema le percentuali delle porzioni.")
-            else:
-                st.warning("Seleziona almeno una porzione da mangiare tra quelle disponibili.")
-            
-            st.divider()
-            
-            st.markdown("### 3️⃣ Salvataggio")
-            
             if rt_consumo_lib > 0 and perc_rimanente_lib >= 0:
                 dettaglio_lib = ", ".join([f"{ing['quantita']:g}{ing['unita']} {ing['nome']}" for ing in st.session_state.temp_recipe_diario])
-                elemento_inserito = f"⏱️ {nome_libera} [{dettaglio_lib}]"
-
                 rows_to_add.append({
                     "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
-                    "Elemento": elemento_inserito, "Quantita": tot_perc_consumata_lib, "Unita": "%",
+                    "Elemento": f"⏱️ {nome_libera} [{dettaglio_lib}]", "Quantita": tot_perc_consumata_lib, "Unita": "%",
                     "Calorie": m_cal_tot * rt_consumo_lib, "Carboidrati": m_c_tot * rt_consumo_lib, "Proteine": m_p_tot * rt_consumo_lib,
-                    "Grassi": m_f_tot * rt_consumo_lib, "Saturi": m_sat_tot * rt_consumo_lib, "Fibre": m_fib_tot * rt_consumo_lib, "User_ID": USER_ID
+                    "Grassi": m_f_tot * rt_consumo_lib, "Saturi": m_sat_tot * rt_consumo_lib, "Fibre": m_fib_tot * rt_consumo_lib, "User_ID": USER_ID,
+                    "TGT_Cal": tgt_cal, "TGT_C": tgt_c, "TGT_P": tgt_p, "TGT_F": tgt_f
                 })
                 ready_to_add = True
 
@@ -1532,10 +1375,9 @@ elif pagina_corrente == "📅 Diario Alimentare":
             with st.spinner("Salvataggio in corso..."):
                 try:
                     df_diario = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=0)
-                    # Auto-Riparazione e formattazione robusta
                     if 'User_ID' not in df_diario.columns: df_diario['User_ID'] = ADMIN_ID
                     
-                    expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID"]
+                    expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"]
                     for c in expected:
                         if c not in df_diario.columns: df_diario[c] = None
                     df_diario = df_diario[expected]
@@ -1545,12 +1387,9 @@ elif pagina_corrente == "📅 Diario Alimentare":
                     conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Diario", data=df_diario_upd)
                     st.cache_data.clear()
                     
-                    st.session_state.diario_multi_items = [] 
-                    st.session_state.temp_recipe_diario = [] 
-                    
+                    st.session_state.diario_multi_items = []; st.session_state.temp_recipe_diario = [] 
                     for k in ['vassoio_ing_scelto', 'vassoio_qta', 'vassoio_unit', 'chk_cotto', 'ing_lib_sel', 'qta_lib_val', 'unit_lib_val']:
                         st.session_state.pop(k, None)
-                    
                     st.success("✅ Pasto aggiunto al tuo diario personale!")
                     st.rerun()
                 except Exception as e:
@@ -1560,20 +1399,52 @@ elif pagina_corrente == "📅 Diario Alimentare":
     # 📊 REPORT E STORICO GIORNALIERO (Filtrato per Utente)
     # ==========================================
     st.divider()
-    st.markdown("### 📊 I Tuoi Report")
     
     try:
         df_diario_completo = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=10)
         if 'User_ID' not in df_diario_completo.columns: df_diario_completo['User_ID'] = ADMIN_ID
         
-        expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID"]
+        expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"]
         for c in expected:
             if c not in df_diario_completo.columns: df_diario_completo[c] = None
         df_diario_completo = df_diario_completo[expected]
         
-        # MOSTRA SOLO I DATI DELL'UTENTE LOGGATO
         df_diario = df_diario_completo[df_diario_completo['User_ID'] == USER_ID]
         
+        # Recupera Obiettivi Attuali dal Profilo per la riga di OGGI (per le barre del Giorno Attivo)
+        tgt_cal = tgt_c = tgt_p = tgt_f = 0.0
+        try:
+            df_prof = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Profilo", ttl=60)
+            u_prof = df_prof[df_prof['User_ID'] == USER_ID]
+            if not u_prof.empty:
+                tgt_cal = float(u_prof.iloc[0].get('TGT_Cal', 0) or 0)
+                tgt_c = float(u_prof.iloc[0].get('TGT_C', 0) or 0)
+                tgt_p = float(u_prof.iloc[0].get('TGT_P', 0) or 0)
+                tgt_f = float(u_prof.iloc[0].get('TGT_F', 0) or 0)
+        except: pass
+
+        def render_prog(col, label, curr, tgt, unit):
+            with col:
+                if tgt > 0:
+                    perc = curr / tgt
+                    diff = tgt - curr
+                    st.progress(min(max(perc, 0.0), 1.0))
+                    
+                    if diff >= 0:
+                        st.markdown(f"{label}: **{curr:.0f}** / {tgt:.0f} {unit}")
+                        st.caption(f"📉 Mancano: **{diff:.0f}** {unit} ({(diff/tgt)*100:.1f}%)")
+                    else:
+                        st.markdown(f"<span style='color:#FF4B4B;'>{label}: <b>{curr:.0f}</b> / {tgt:.0f} {unit}</span>", unsafe_allow_html=True)
+                        st.markdown(f"<span style='color:#FF4B4B; font-size:14px;'>🚨 Superato di: <b>{abs(diff):.0f}</b> {unit} (+{(perc*100)-100:.1f}%)</span>", unsafe_allow_html=True)
+                else:
+                    st.write(f"{label}: {curr:.0f}")
+
+        def get_status_emoji(val, tgt):
+            if pd.isna(tgt) or tgt <= 0: return ""
+            if val < tgt * 0.90: return "🟨"
+            elif val > tgt * 1.05: return "🚨"
+            else: return "✅"
+
         # 1. GIORNO ATTIVO
         if str(data_sel) == str(pd.to_datetime('today').date()): etichetta_giorno = "Oggi"
         elif str(data_sel) == str((pd.to_datetime('today') - pd.Timedelta(days=1)).date()): etichetta_giorno = "Ieri"
@@ -1584,11 +1455,21 @@ elif pagina_corrente == "📅 Diario Alimentare":
         
         if not df_oggi.empty:
             t_cal = df_oggi['Calorie'].sum(); t_c = df_oggi['Carboidrati'].sum(); t_p = df_oggi['Proteine'].sum(); t_f = df_oggi['Grassi'].sum()
-            cm1, cm2, cm3, cm4 = st.columns(4)
-            cm1.markdown(f"**🔥 Calorie Totali**\n\n### {t_cal:.0f} kcal")
-            cm2.markdown(f"**🍞 Carboidrati**\n\n### {t_c:.1f} g")
-            cm3.markdown(f"**🥩 Proteine**\n\n### {t_p:.1f} g")
-            cm4.markdown(f"**🥑 Grassi**\n\n### {t_f:.1f} g")
+            
+            if tgt_cal > 0:
+                st.markdown("##### 🎯 Progresso rispetto ai tuoi obiettivi:")
+                cp1, cp2, cp3, cp4 = st.columns(4)
+                render_prog(cp1, "🔥 Cal", t_cal, tgt_cal, "kcal")
+                render_prog(cp2, "🍞 Carb", t_c, tgt_c, "g")
+                render_prog(cp3, "🥩 Prot", t_p, tgt_p, "g")
+                render_prog(cp4, "🥑 Gras", t_f, tgt_f, "g")
+                st.write("")
+            else:
+                cm1, cm2, cm3, cm4 = st.columns(4)
+                cm1.metric("🔥 Calorie Totali", f"{t_cal:.0f} kcal")
+                cm2.metric("🍞 Carboidrati", f"{t_c:.1f} g")
+                cm3.metric("🥩 Proteine", f"{t_p:.1f} g")
+                cm4.metric("🥑 Grassi", f"{t_f:.1f} g")
             
             st.write("")
             for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
@@ -1608,9 +1489,8 @@ elif pagina_corrente == "📅 Diario Alimentare":
                                 st.warning(f"⚠️ Vuoi eliminare '{row['Elemento']}'?")
                                 cy, cn = st.columns(2)
                                 if cy.button("🚨 Sì", key=f"yes_oggi_{row['ID']}", type="primary"):
-                                    # Leggi il DB completo di tutti e rimuovi solo quella specifica riga
                                     df_to_delete = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario")
-                                    df_to_delete = df_to_delete[df_to_delete.iloc[:, 0] != row['ID']] # La prima colonna è sempre l'ID
+                                    df_to_delete = df_to_delete[df_to_delete.iloc[:, 0] != row['ID']]
                                     conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Diario", data=df_to_delete)
                                     st.cache_data.clear()
                                     st.session_state.confirm_del_diario = None
@@ -1620,183 +1500,107 @@ elif pagina_corrente == "📅 Diario Alimentare":
                                     st.rerun()
         else: st.info("Nessun pasto registrato per la data selezionata.")
 
-        st.write("")
-        st.write("")
+        st.divider()
+        st.markdown("### 📊 Storico ed Analisi Report")
+        
+        st.markdown(
+            """
+            <style>
+            .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
+                font-size: 1.15rem !important;
+                font-weight: bold !important;
+            }
+            </style>
+            """, unsafe_allow_html=True
+        )
 
-        # 2. STORICO E REPORT
-        tab_storico, tab_report = st.tabs(["🗓️ Storico Giornaliero", "📈 Statistiche e Report"])
-
-        with tab_storico:
-            altri_giorni = df_diario[df_diario['Data'] != str(data_sel)]['Data'].dropna().unique()
-            altri_giorni_sorted = sorted(altri_giorni, reverse=True)
-            
-            if len(altri_giorni_sorted) > 0:
-                for d in altri_giorni_sorted:
-                    df_giorno = df_diario[df_diario['Data'] == d]
-                    t_cal_storico = df_giorno['Calorie'].sum()
-                    d_obj = pd.to_datetime(d).strftime('%d/%m/%Y')
-                    
-                    with st.expander(f"📅 {d_obj} - Totale: {t_cal_storico:.0f} kcal"):
-                        st.markdown(f"**Macros:** Carboidrati: {df_giorno['Carboidrati'].sum():.1f}g | Proteine: {df_giorno['Proteine'].sum():.1f}g | Grassi: {df_giorno['Grassi'].sum():.1f}g")
-                        st.write("")
-                        for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
-                            df_pasto_s = df_giorno[(df_giorno['Pasto'] == pasto) | (df_giorno['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
-                            if not df_pasto_s.empty:
-                                # Calcolo i macros totali per il singolo pasto nello storico
-                                t_cal_s = df_pasto_s['Calorie'].sum()
-                                t_c_s = df_pasto_s['Carboidrati'].sum()
-                                t_p_s = df_pasto_s['Proteine'].sum()
-                                t_f_s = df_pasto_s['Grassi'].sum()
-                                
-                                # Aggiungo i macros al titolo dell'expander del pasto
-                                with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_s:.0f} kcal | C: {t_c_s:.1f}g | P: {t_p_s:.1f}g | G: {t_f_s:.1f}g)", expanded=False):
-                                    for _, row in df_pasto_s.iterrows():
-                                        c_text_s, c_del_s = st.columns([0.90, 0.10])
-                                        # Aggiungo i macros al dettaglio del singolo elemento
-                                        c_text_s.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
-                                        if c_del_s.button("❌", key=f"del_storico_{row['ID']}"):
-                                            st.info("Eliminazione veloce dallo storico. Usa la selezione giorno per conferme.")
-            else:
-                st.write("Nessun altro giorno salvato nel tuo storico.")
+        tab_report, tab_storico, tab_planner = st.tabs(["📈 Statistiche e Report", "🗓️ Storico Giornaliero", "📆 Meal Planning (Futuro)"])
 
         with tab_report:
-            st.markdown("### 🎛️ Centro di Controllo Nutrizionale")
-            
-            # 1. Filtro Date Dinamico
             c_date1, c_date2 = st.columns([1, 2])
-            rep_mode = c_date1.radio(
-                "Periodo di analisi:", 
-                ["Oggi", "Ieri", "Ultimi 7 gg", "Ultimi 30 gg", "Personalizzato"], 
-                index=0, 
-                horizontal=True
-            )
+            rep_mode = c_date1.radio("Periodo di analisi:", ["Oggi", "Ieri", "Ultimi 7 gg", "Ultimi 30 gg", "Personalizzato"], index=0, horizontal=True)
             
             oggi = pd.to_datetime('today').date()
-            if rep_mode == "Oggi":
-                start_date = oggi
-                end_date = oggi
-            elif rep_mode == "Ieri":
-                start_date = oggi - datetime.timedelta(days=1)
-                end_date = oggi - datetime.timedelta(days=1)
-            elif rep_mode == "Ultimi 7 gg":
-                start_date = oggi - datetime.timedelta(days=7)
-                end_date = oggi
-            elif rep_mode == "Ultimi 30 gg":
-                start_date = oggi - datetime.timedelta(days=30)
-                end_date = oggi
+            if rep_mode == "Oggi": start_date = end_date = oggi
+            elif rep_mode == "Ieri": start_date = end_date = oggi - datetime.timedelta(days=1)
+            elif rep_mode == "Ultimi 7 gg": start_date = oggi - datetime.timedelta(days=7); end_date = oggi
+            elif rep_mode == "Ultimi 30 gg": start_date = oggi - datetime.timedelta(days=30); end_date = oggi
             else:
-                sel_dates = c_date2.date_input("Seleziona intervallo (Inizio - Fine):", [oggi, oggi])
-                if len(sel_dates) == 2:
-                    start_date, end_date = sel_dates
-                else:
-                    start_date, end_date = oggi, oggi
+                sel_dates = c_date2.date_input("Seleziona intervallo:", [oggi, oggi])
+                if len(sel_dates) == 2: start_date, end_date = sel_dates
+                else: start_date, end_date = oggi, oggi
 
-            # Filtriamo il database in base alle date
             df_diario['Data_DT'] = pd.to_datetime(df_diario['Data'], format='%Y-%m-%d', errors='coerce').dt.date
             mask_date = (df_diario['Data_DT'] >= start_date) & (df_diario['Data_DT'] <= end_date)
             df_rep_base = df_diario[mask_date].copy()
             
             if not df_rep_base.empty:
                 st.divider()
-                
-                # 2. Filtro Pasti Interattivo
                 st.markdown("#### 🍽️ Analisi Dinamica per Pasti")
                 pasti_disponibili = ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena", "Spuntino Mattina"]
-                
-                # Troviamo i pasti effettivamente presenti nel periodo per evitare filtri vuoti
                 pasti_presenti = [p for p in pasti_disponibili if p in df_rep_base['Pasto'].unique() or (p=="Spuntino" and "Spuntino Mattina" in df_rep_base['Pasto'].unique())]
                 if not pasti_presenti: pasti_presenti = df_rep_base['Pasto'].unique().tolist()
                 
-                pasti_selezionati = st.multiselect(
-                    "Quali pasti vuoi analizzare? (Aggiungi o rimuovi per vedere i totali aggiornarsi in tempo reale)", 
-                    options=pasti_presenti, 
-                    default=pasti_presenti
-                )
-                
-                # Filtriamo il dataframe anche per i pasti selezionati
+                pasti_selezionati = st.multiselect("Quali pasti vuoi analizzare?", options=pasti_presenti, default=pasti_presenti)
                 pasti_filter = list(pasti_selezionati)
-                if "Spuntino" in pasti_filter and "Spuntino Mattina" not in pasti_filter:
-                    pasti_filter.append("Spuntino Mattina")
+                if "Spuntino" in pasti_filter and "Spuntino Mattina" not in pasti_filter: pasti_filter.append("Spuntino Mattina")
                     
                 df_rep = df_rep_base[df_rep_base['Pasto'].isin(pasti_filter)]
                 
                 if not df_rep.empty:
                     giorni_totali = df_rep['Data'].nunique()
+                    st.write(f"📊 **Medie calcolate dal {start_date.strftime('%d/%m/%Y')} al {end_date.strftime('%d/%m/%Y')} su {giorni_totali} giorni attivi:**")
                     
-                    st.write(f"📊 **Totali calcolati dal {start_date.strftime('%d/%m/%Y')} al {end_date.strftime('%d/%m/%Y')} su {giorni_totali} giorni attivi:**")
-                    
-                    # 3. Metriche e KPI
-                    c_r1, c_r2, c_r3, c_r4 = st.columns(4)
                     tot_cal = df_rep['Calorie'].sum()
-                    tot_c = df_rep['Carboidrati'].sum()
-                    tot_p = df_rep['Proteine'].sum()
-                    tot_f = df_rep['Grassi'].sum()
+                    tot_c = df_rep['Carboidrati'].sum(); tot_p = df_rep['Proteine'].sum(); tot_f = df_rep['Grassi'].sum()
                     
-                    c_r1.metric("🔥 Calorie Totali", f"{tot_cal:.0f} kcal", f"Media: {tot_cal/giorni_totali:.0f} /gg")
-                    c_r2.metric("🍞 Carb. Totali", f"{tot_c:.1f} g", f"Media: {tot_c/giorni_totali:.1f} /gg")
-                    c_r3.metric("🥩 Prot. Totali", f"{tot_p:.1f} g", f"Media: {tot_p/giorni_totali:.1f} /gg")
-                    c_r4.metric("🥑 Grassi Totali", f"{tot_f:.1f} g", f"Media: {tot_f/giorni_totali:.1f} /gg")
+                    media_cal = tot_cal / giorni_totali
+                    media_c = tot_c / giorni_totali
+                    media_p = tot_p / giorni_totali
+                    media_f = tot_f / giorni_totali
+                    
+                    if tgt_cal > 0:
+                        st.markdown("##### 🎯 Media Giornaliera rispetto ai tuoi Obiettivi:")
+                        c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+                        render_prog(c_r1, "🔥 Cal Medie", media_cal, tgt_cal, "kcal")
+                        render_prog(c_r2, "🍞 Carb Medi", media_c, tgt_c, "g")
+                        render_prog(c_r3, "🥩 Prot Medie", media_p, tgt_p, "g")
+                        render_prog(c_r4, "🥑 Gras Medi", media_f, tgt_f, "g")
+                        st.write("")
+                    else:
+                        c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+                        c_r1.metric("🔥 Calorie Totali", f"{tot_cal:.0f} kcal", f"Media: {media_cal:.0f} /gg")
+                        c_r2.metric("🍞 Carb. Totali", f"{tot_c:.1f} g", f"Media: {media_c:.1f} /gg")
+                        c_r3.metric("🥩 Prot. Totali", f"{tot_p:.1f} g", f"Media: {media_p:.1f} /gg")
+                        c_r4.metric("🥑 Grassi Totali", f"{tot_f:.1f} g", f"Media: {media_f:.1f} /gg")
                     
                     st.write("")
-                    
-                    # 4. Grafici Interattivi
                     c_chart1, c_chart2 = st.columns([1, 1.8])
-                    
                     with c_chart1:
                         st.markdown("**Ripartizione Macronutrienti (g)**")
                         if tot_c + tot_p + tot_f > 0:
-                            # Grafico a Torta (Donut)
-                            fig_pie = px.pie(
-                                names=['Carboidrati', 'Proteine', 'Grassi'],
-                                values=[tot_c, tot_p, tot_f],
-                                color_discrete_sequence=['#FFA07A', '#87CEFA', '#98FB98'],
-                                hole=0.4 # Crea l'effetto "ciambella"
-                            )
-                            fig_pie.update_layout(
-                                margin=dict(t=20, b=20, l=0, r=0), 
-                                height=300,
-                                showlegend=True,
-                                legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
-                            )
+                            fig_pie = px.pie(names=['Carboidrati', 'Proteine', 'Grassi'], values=[tot_c, tot_p, tot_f], color_discrete_sequence=['#FFA07A', '#87CEFA', '#98FB98'], hole=0.4)
+                            fig_pie.update_layout(margin=dict(t=20, b=20, l=0, r=0), height=300, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
                             fig_pie.update_traces(textposition='inside', textinfo='percent+label')
                             st.plotly_chart(fig_pie, use_container_width=True)
-                        else:
-                            st.info("Dati macros insufficienti per il grafico a torta.")
+                        else: st.info("Dati macros insufficienti per il grafico a torta.")
                             
                     with c_chart2:
                         st.markdown("**Andamento Giornaliero Macros**")
-                        # Raggruppa i dati giorno per giorno per il grafico a linee
                         df_trend = df_rep.groupby('Data')[['Carboidrati', 'Proteine', 'Grassi']].sum().reset_index()
                         df_trend['Data'] = pd.to_datetime(df_trend['Data'])
                         df_trend = df_trend.sort_values('Data')
                         
-                        fig_line = px.line(
-                            df_trend, 
-                            x='Data', 
-                            y=['Carboidrati', 'Proteine', 'Grassi'],
-                            color_discrete_map={'Carboidrati':'#FFA07A', 'Proteine':'#87CEFA', 'Grassi':'#98FB98'},
-                            markers=True
-                        )
-                        fig_line.update_layout(
-                            xaxis_title="", 
-                            yaxis_title="Grammi (g)",
-                            legend_title="", 
-                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                            margin=dict(t=20, b=20, l=0, r=0), 
-                            height=300,
-                            hovermode="x unified" # Mostra tutti i macros passando col mouse su un giorno
-                        )
+                        fig_line = px.line(df_trend, x='Data', y=['Carboidrati', 'Proteine', 'Grassi'], color_discrete_map={'Carboidrati':'#FFA07A', 'Proteine':'#87CEFA', 'Grassi':'#98FB98'}, markers=True)
+                        fig_line.update_layout(xaxis_title="", yaxis_title="Grammi (g)", legend_title="", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), margin=dict(t=20, b=20, l=0, r=0), height=300, hovermode="x unified")
                         st.plotly_chart(fig_line, use_container_width=True)
                         
-                    # 5. Tabella di Esportazione/Dettaglio
                     with st.expander("📅 Vedi Tabella Sintetica Giornaliera"):
                         df_day = df_rep.groupby('Data')[['Calorie', 'Carboidrati', 'Proteine', 'Grassi']].sum().reset_index()
                         df_day = df_day.sort_values('Data', ascending=False)
                         st.dataframe(df_day.style.format({"Calorie": "{:.0f}", "Carboidrati": "{:.1f}", "Proteine": "{:.1f}", "Grassi": "{:.1f}"}), use_container_width=True, hide_index=True)
 
                     st.divider()
-
-                    # 6. Dettaglio Completo dei Pasti (Copia identica dello Storico Giornaliero)
                     st.markdown("### 📖 Dettaglio Completo dei Pasti Selezionati")
                     giorni_report = df_rep['Data'].dropna().unique()
                     giorni_report_sorted = sorted(giorni_report, reverse=True)
@@ -1804,31 +1608,124 @@ elif pagina_corrente == "📅 Diario Alimentare":
                     for d in giorni_report_sorted:
                         df_giorno = df_rep[df_rep['Data'] == d]
                         t_cal_storico = df_giorno['Calorie'].sum()
+                        t_c_s = df_giorno['Carboidrati'].sum()
+                        t_p_s = df_giorno['Proteine'].sum()
+                        t_f_s = df_giorno['Grassi'].sum()
                         d_obj = pd.to_datetime(d).strftime('%d/%m/%Y')
                         
-                        with st.expander(f"📅 {d_obj} - Totale: {t_cal_storico:.0f} kcal"):
-                            st.markdown(f"**Macros:** Carboidrati: {df_giorno['Carboidrati'].sum():.1f}g | Proteine: {df_giorno['Proteine'].sum():.1f}g | Grassi: {df_giorno['Grassi'].sum():.1f}g")
+                        # Estrae l'Obiettivo Storico congelato per quel giorno (se presente)
+                        h_tgt_cal = df_giorno['TGT_Cal'].max() if 'TGT_Cal' in df_giorno.columns else 0.0
+                        if pd.isna(h_tgt_cal) or h_tgt_cal == 0: h_tgt_cal = tgt_cal
+                        h_tgt_c = df_giorno['TGT_C'].max() if 'TGT_C' in df_giorno.columns else 0.0
+                        if pd.isna(h_tgt_c) or h_tgt_c == 0: h_tgt_c = tgt_c
+                        h_tgt_p = df_giorno['TGT_P'].max() if 'TGT_P' in df_giorno.columns else 0.0
+                        if pd.isna(h_tgt_p) or h_tgt_p == 0: h_tgt_p = tgt_p
+                        h_tgt_f = df_giorno['TGT_F'].max() if 'TGT_F' in df_giorno.columns else 0.0
+                        if pd.isna(h_tgt_f) or h_tgt_f == 0: h_tgt_f = tgt_f
+                        
+                        titolo_storico = f"📅 {d_obj} - Totale: {t_cal_storico:.0f} kcal"
+                        if h_tgt_cal > 0:
+                            titolo_storico += f" / {h_tgt_cal:.0f} kcal {get_status_emoji(t_cal_storico, h_tgt_cal)}"
+                            
+                        with st.expander(titolo_storico):
+                            if h_tgt_cal > 0:
+                                st.markdown(f"**Macros Consumati:** Carboidrati: {t_c_s:.1f}g/{h_tgt_c:.0f}g {get_status_emoji(t_c_s, h_tgt_c)} | Proteine: {t_p_s:.1f}g/{h_tgt_p:.0f}g {get_status_emoji(t_p_s, h_tgt_p)} | Grassi: {t_f_s:.1f}g/{h_tgt_f:.0f}g {get_status_emoji(t_f_s, h_tgt_f)}")
+                            else:
+                                st.markdown(f"**Macros:** Carboidrati: {t_c_s:.1f}g | Proteine: {t_p_s:.1f}g | Grassi: {t_f_s:.1f}g")
                             st.write("")
                             for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
                                 df_pasto_s = df_giorno[(df_giorno['Pasto'] == pasto) | (df_giorno['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
                                 if not df_pasto_s.empty:
-                                    t_cal_s = df_pasto_s['Calorie'].sum()
-                                    t_c_s = df_pasto_s['Carboidrati'].sum()
-                                    t_p_s = df_pasto_s['Proteine'].sum()
-                                    t_f_s = df_pasto_s['Grassi'].sum()
-                                    
-                                    with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_s:.0f} kcal | C: {t_c_s:.1f}g | P: {t_p_s:.1f}g | G: {t_f_s:.1f}g)", expanded=False):
+                                    t_cal_p = df_pasto_s['Calorie'].sum(); t_c_p = df_pasto_s['Carboidrati'].sum(); t_p_p = df_pasto_s['Proteine'].sum(); t_f_p = df_pasto_s['Grassi'].sum()
+                                    with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g)", expanded=False):
                                         for _, row in df_pasto_s.iterrows():
                                             c_text_s, c_del_s = st.columns([0.90, 0.10])
                                             c_text_s.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
                                             if c_del_s.button("❌", key=f"del_report_{row['ID']}"):
                                                 st.info("Eliminazione veloce dal report. Usa la selezione del Giorno Attivo (in alto) per le conferme definitive.")
 
-                else:
-                    st.warning("Nessun dato registrato per i pasti selezionati in questo periodo.")
-            else: 
-                st.info("Nessun dato registrato nell'intervallo di date selezionato.")
+                else: st.warning("Nessun dato registrato per i pasti selezionati in questo periodo.")
+            else: st.info("Nessun dato registrato nell'intervallo di date selezionato.")
 
+        with tab_storico:
+            altri_giorni = df_diario[df_diario['Data'] != str(data_sel)]['Data'].dropna().unique()
+            oggi_str = str(pd.to_datetime('today').date())
+            altri_giorni_passati = [d for d in altri_giorni if d <= oggi_str]
+            altri_giorni_sorted = sorted(altri_giorni_passati, reverse=True)
+            
+            if len(altri_giorni_sorted) > 0:
+                for d in altri_giorni_sorted:
+                    df_giorno = df_diario[df_diario['Data'] == d]
+                    t_cal_s = df_giorno['Calorie'].sum()
+                    t_c_s = df_giorno['Carboidrati'].sum()
+                    t_p_s = df_giorno['Proteine'].sum()
+                    t_f_s = df_giorno['Grassi'].sum()
+                    d_obj = pd.to_datetime(d).strftime('%d/%m/%Y')
+                    
+                    # Estrae l'Obiettivo Storico congelato per quel giorno (se presente)
+                    h_tgt_cal = df_giorno['TGT_Cal'].max() if 'TGT_Cal' in df_giorno.columns else 0.0
+                    if pd.isna(h_tgt_cal) or h_tgt_cal == 0: h_tgt_cal = tgt_cal
+                    h_tgt_c = df_giorno['TGT_C'].max() if 'TGT_C' in df_giorno.columns else 0.0
+                    if pd.isna(h_tgt_c) or h_tgt_c == 0: h_tgt_c = tgt_c
+                    h_tgt_p = df_giorno['TGT_P'].max() if 'TGT_P' in df_giorno.columns else 0.0
+                    if pd.isna(h_tgt_p) or h_tgt_p == 0: h_tgt_p = tgt_p
+                    h_tgt_f = df_giorno['TGT_F'].max() if 'TGT_F' in df_giorno.columns else 0.0
+                    if pd.isna(h_tgt_f) or h_tgt_f == 0: h_tgt_f = tgt_f
+                    
+                    titolo_storico = f"📅 {d_obj} - Totale: {t_cal_s:.0f} kcal"
+                    if h_tgt_cal > 0:
+                        titolo_storico += f" / {h_tgt_cal:.0f} kcal {get_status_emoji(t_cal_s, h_tgt_cal)}"
+                        
+                    with st.expander(titolo_storico):
+                        if h_tgt_cal > 0:
+                            st.markdown(f"**Macros Consumati:** Carboidrati: {t_c_s:.1f}g/{h_tgt_c:.0f}g {get_status_emoji(t_c_s, h_tgt_c)} | Proteine: {t_p_s:.1f}g/{h_tgt_p:.0f}g {get_status_emoji(t_p_s, h_tgt_p)} | Grassi: {t_f_s:.1f}g/{h_tgt_f:.0f}g {get_status_emoji(t_f_s, h_tgt_f)}")
+                        else:
+                            st.markdown(f"**Macros:** Carboidrati: {t_c_s:.1f}g | Proteine: {t_p_s:.1f}g | Grassi: {t_f_s:.1f}g")
+                        st.write("")
+                        for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
+                            df_pasto_s = df_giorno[(df_giorno['Pasto'] == pasto) | (df_giorno['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
+                            if not df_pasto_s.empty:
+                                t_cal_p = df_pasto_s['Calorie'].sum(); t_c_p = df_pasto_s['Carboidrati'].sum(); t_p_p = df_pasto_s['Proteine'].sum(); t_f_p = df_pasto_s['Grassi'].sum()
+                                with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g)", expanded=False):
+                                    for _, row in df_pasto_s.iterrows():
+                                        c_text_s, c_del_s = st.columns([0.90, 0.10])
+                                        c_text_s.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
+                                        if c_del_s.button("❌", key=f"del_storico_{row['ID']}"):
+                                            st.info("Eliminazione veloce dallo storico. Usa la selezione giorno per conferme.")
+            else:
+                st.write("Nessun altro giorno salvato nel tuo storico.")
+
+        with tab_planner:
+            st.markdown("### 📆 I Tuoi Pasti Futuri")
+            st.write("Usa il calendario in alto per registrare i tuoi pasti per i giorni a venire. Qui trovi il riepilogo della tua programmazione settimanale.")
+            
+            df_diario['Data_DT'] = pd.to_datetime(df_diario['Data'], format='%Y-%m-%d', errors='coerce').dt.date
+            oggi_date = pd.to_datetime('today').date()
+            df_futuro = df_diario[df_diario['Data_DT'] > oggi_date].copy()
+            
+            if not df_futuro.empty:
+                giorni_futuri = sorted(df_futuro['Data'].unique())
+                for d in giorni_futuri:
+                    df_giorno = df_futuro[df_futuro['Data'] == d]
+                    t_cal_storico = df_giorno['Calorie'].sum()
+                    d_obj = pd.to_datetime(d)
+                    nome_giorno = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"][d_obj.weekday()]
+                    
+                    with st.expander(f"📌 {nome_giorno} {d_obj.strftime('%d/%m/%Y')} - Pianificato: {t_cal_storico:.0f} kcal", expanded=True):
+                        st.markdown(f"**Macros Previsti:** Carboidrati: {df_giorno['Carboidrati'].sum():.1f}g | Proteine: {df_giorno['Proteine'].sum():.1f}g | Grassi: {df_giorno['Grassi'].sum():.1f}g")
+                        st.write("")
+                        for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
+                            df_pasto_s = df_giorno[(df_giorno['Pasto'] == pasto) | (df_giorno['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
+                            if not df_pasto_s.empty:
+                                st.markdown(f"**{pasto.upper()}** (Cal: {df_pasto_s['Calorie'].sum():.0f} kcal)")
+                                for _, row in df_pasto_s.iterrows():
+                                    st.write(f"- {row['Quantita']:.1f} {row['Unita']} di {row['Elemento']}")
+                        st.write("")
+                        if st.button(f"Vai a {nome_giorno}", key=f"btn_go_{d}"):
+                            st.info("💡 Scorri in alto e seleziona questa data nel calendario per fare modifiche!")
+            else:
+                st.success("Non hai ancora pianificato nessun pasto per i prossimi giorni.")
+                
     except Exception as e:
         st.info(f"Il tuo diario è vuoto o c'è un errore di configurazione in Sheets. {e}")
 
@@ -2113,4 +2010,122 @@ elif pagina_corrente == "🗄️ Database Prodotti":
             else: 
                 st.warning("Inserisci il nome della variante.")
 
-st.markdown("<br><br><div style='text-align: center; color: gray;'><small>⚡ Powerd by iannovins</small></div>", unsafe_allow_html=True)
+# ==========================================
+# 👤 PAGINA 4: PROFILO E OBIETTIVI
+# ==========================================
+elif pagina_corrente == "👤 Profilo e Obiettivi":
+    
+    st.title("👤 Profilo e Obiettivi Nutrizionali")
+    st.markdown("#### *Calcola il tuo fabbisogno e genera i tuoi target in automatico.* 🎯")
+    st.write("")
+
+    try:
+        df_prof = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Profilo", ttl=0)
+        expected_cols = ["User_ID", "Peso", "Altezza", "Eta", "Sesso", "Attivita", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"]
+        for c in expected_cols:
+            if c not in df_prof.columns: df_prof[c] = None
+    except Exception:
+        df_prof = pd.DataFrame(columns=["User_ID", "Peso", "Altezza", "Eta", "Sesso", "Attivita", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"])
+
+    u_prof = df_prof[df_prof['User_ID'] == USER_ID]
+    
+    # Valori salvati o default
+    def_peso = float(u_prof.iloc[0]['Peso']) if not u_prof.empty and pd.notna(u_prof.iloc[0]['Peso']) else 75.0
+    def_alt = int(u_prof.iloc[0]['Altezza']) if not u_prof.empty and pd.notna(u_prof.iloc[0]['Altezza']) else 175
+    def_eta = int(u_prof.iloc[0]['Eta']) if not u_prof.empty and pd.notna(u_prof.iloc[0]['Eta']) else 52
+    def_sesso = str(u_prof.iloc[0]['Sesso']) if not u_prof.empty and pd.notna(u_prof.iloc[0]['Sesso']) else "Uomo"
+    def_att = str(u_prof.iloc[0]['Attivita']) if not u_prof.empty and pd.notna(u_prof.iloc[0]['Attivita']) else "Moderatamente Attivo (1.55) - Sport moderato 3-5 volte a sett"
+
+    st.markdown("### 1️⃣ I tuoi Dati Personali")
+    c1, c2, c3, c4 = st.columns(4)
+    peso = c1.number_input("Peso attuale (kg)", min_value=30.0, max_value=200.0, value=def_peso, step=0.1)
+    alt = c2.number_input("Altezza (cm)", min_value=100, max_value=250, value=def_alt, step=1)
+    eta = c3.number_input("Età", min_value=10, max_value=100, value=def_eta, step=1)
+    sesso = c4.selectbox("Sesso", ["Uomo", "Donna"], index=0 if def_sesso=="Uomo" else 1)
+    
+    attivita_list = {
+        "Sedentario (1.2) - Lavoro da scrivania, no sport": 1.2,
+        "Leggermente Attivo (1.375) - Sport leggero 1-3 volte a sett": 1.375,
+        "Moderatamente Attivo (1.55) - Sport moderato 3-5 volte a sett": 1.55,
+        "Molto Attivo (1.725) - Sport intenso 6-7 giorni": 1.725,
+        "Extra Attivo (1.9) - Atleta agonista o lavoro fisico pesante": 1.9
+    }
+    idx_att = list(attivita_list.keys()).index(def_att) if def_att in attivita_list else 2
+    att = st.selectbox("Livello di Attività Media", list(attivita_list.keys()), index=idx_att)
+    
+    # CALCOLO TDEE IN TEMPO REALE
+    s = 5 if sesso == "Uomo" else -161
+    bmr = (10 * peso) + (6.25 * alt) - (5 * eta) + s
+    tdee = bmr * attivita_list[att]
+    
+    st.info(f"🧬 **Metabolismo Basale (BMR):** {bmr:.0f} kcal  |  🔥 **Dispendio Energetico Totale (TDEE):** {tdee:.0f} kcal")
+    
+    st.divider()
+
+    st.markdown("### 2️⃣ Generazione Automatica dei Macros")
+    st.write("Scegli il tuo obiettivo e imposta i fattori nutrizionali. I Carboidrati verranno calcolati automaticamente per coprire le calorie rimanenti.")
+    
+    col_ob1, col_ob2, col_ob3 = st.columns(3)
+    
+    obiettivo = col_ob1.selectbox(
+        "Qual è il tuo obiettivo?", 
+        ["Mantenimento (TDEE esatto)", "Dimagrimento Lieve (-300 kcal)", "Dimagrimento Marcato (-500 kcal)", "Costruzione Muscolare (+300 kcal)"]
+    )
+    
+    if "Mantenimento" in obiettivo: tgt_cal_auto = tdee
+    elif "Lieve" in obiettivo: tgt_cal_auto = tdee - 300
+    elif "Marcato" in obiettivo: tgt_cal_auto = tdee - 500
+    else: tgt_cal_auto = tdee + 300
+    
+    molt_p = col_ob2.slider("Fattore Proteine (g per kg di peso)", min_value=1.0, max_value=3.0, value=2.0, step=0.1, help="Per sportivi che si allenano coi pesi si consiglia 1.6 - 2.2 g/kg.")
+    molt_f = col_ob3.slider("Fattore Grassi (g per kg di peso)", min_value=0.5, max_value=1.5, value=0.8, step=0.1, help="Per la salute ormonale il minimo sindacale è 0.5 g/kg. Media consigliata 0.8 - 1.0 g/kg.")
+
+    # Calcolo esatto dei grammi
+    calc_p = peso * molt_p
+    calc_f = peso * molt_f
+    
+    # Calcolo calorie occupate da Pro e Grassi
+    cal_occupate = (calc_p * 4) + (calc_f * 9)
+    
+    # I carboidrati sono tutto ciò che resta (se avanza spazio, altrimenti 0)
+    calc_c = (tgt_cal_auto - cal_occupate) / 4 if tgt_cal_auto > cal_occupate else 0.0
+
+    # CALCOLO E VISUALIZZAZIONE DELLE PERCENTUALI
+    perc_p = ((calc_p * 4) / tgt_cal_auto) * 100 if tgt_cal_auto > 0 else 0
+    perc_f = ((calc_f * 9) / tgt_cal_auto) * 100 if tgt_cal_auto > 0 else 0
+    perc_c = ((calc_c * 4) / tgt_cal_auto) * 100 if tgt_cal_auto > 0 else 0
+
+    st.markdown("#### 📊 Ripartizione Macros")
+    st.success(f"🍞 **Carboidrati:** {perc_c:.0f}%  |  🥩 **Proteine:** {perc_p:.0f}%  |  🥑 **Grassi:** {perc_f:.0f}%")
+
+    st.markdown("#### 🎯 I tuoi Target Finali da Salvare")
+    st.write("Questi sono i valori generati. Se vuoi, puoi arrotondarli o ritoccarli a mano prima di salvare.")
+    
+    tc1, tc2, tc3, tc4 = st.columns(4)
+    t_cal = tc1.number_input("Target Calorie", value=float(tgt_cal_auto), step=50.0)
+    t_c = tc2.number_input("Target Carboidrati (g)", value=float(calc_c), step=5.0)
+    t_p = tc3.number_input("Target Proteine (g)", value=float(calc_p), step=5.0)
+    t_f = tc4.number_input("Target Grassi (g)", value=float(calc_f), step=5.0)
+
+    cal_check = (t_c * 4) + (t_p * 4) + (t_f * 9)
+    if abs(cal_check - t_cal) > 50:
+        st.warning(f"⚠️ Nota matematica: I macro inseriti a mano generano circa {cal_check:.0f} kcal, ma il target in alto è {t_cal:.0f}. Non combaciano perfettamente.")
+        
+    st.write("")
+    if st.button("💾 Conferma e Salva Obiettivi", type="primary", use_container_width=True):
+        with st.spinner("Salvataggio in Cloud..."):
+            try:
+                df_prof = df_prof.dropna(subset=['User_ID'])
+                df_prof_upd = df_prof[df_prof['User_ID'] != USER_ID]
+                nuova_riga = pd.DataFrame({
+                    "User_ID": [USER_ID], "Peso": [peso], "Altezza": [alt], "Eta": [eta], "Sesso": [sesso], 
+                    "Attivita": [att], "TGT_Cal": [t_cal], "TGT_C": [t_c], "TGT_P": [t_p], "TGT_F": [t_f]
+                })
+                df_prof_upd = pd.concat([df_prof_upd, nuova_riga], ignore_index=True)
+                conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Profilo", data=df_prof_upd)
+                st.cache_data.clear()
+                st.success("✅ Profilo e Obiettivi aggiornati! Vai nel Diario Alimentare per vedere le Barre di Progresso colorate in azione.")
+            except Exception as e:
+                st.error(f"Errore di salvataggio. Assicurati di aver creato il foglio 'Profilo' in Google Sheets. Errore: {e}")
+
+st.markdown("<br><br><div style='text-align: center; color: gray;'><small>⚡ Powerd by iannovins</small></div>", unsafe_allow_html=True)      
