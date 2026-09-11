@@ -8,6 +8,7 @@ from fpdf import FPDF
 import io
 import datetime
 import calendar
+import plotly.express as px
 
 st.set_page_config(page_title="NutriLab", page_icon="🧪", layout="wide")
 
@@ -1574,7 +1575,11 @@ elif pagina_corrente == "📅 Diario Alimentare":
         df_diario = df_diario_completo[df_diario_completo['User_ID'] == USER_ID]
         
         # 1. GIORNO ATTIVO
-        st.markdown(f"#### 🔵 Giorno Selezionato: {data_sel.strftime('%d/%m/%Y')}")
+        if str(data_sel) == str(pd.to_datetime('today').date()): etichetta_giorno = "Oggi"
+        elif str(data_sel) == str((pd.to_datetime('today') - pd.Timedelta(days=1)).date()): etichetta_giorno = "Ieri"
+        else: etichetta_giorno = "Data"
+        
+        st.markdown(f"#### 🔵 {etichetta_giorno}: {data_sel.strftime('%d/%m/%Y')}")
         df_oggi = df_diario[df_diario['Data'] == str(data_sel)]
         
         if not df_oggi.empty:
@@ -1637,44 +1642,151 @@ elif pagina_corrente == "📅 Diario Alimentare":
                         for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
                             df_pasto_s = df_giorno[(df_giorno['Pasto'] == pasto) | (df_giorno['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
                             if not df_pasto_s.empty:
-                                with st.expander(f"🍽️ {pasto.upper()} (Tot: {df_pasto_s['Calorie'].sum():.0f} kcal)", expanded=False):
+                                # Calcolo i macros totali per il singolo pasto nello storico
+                                t_cal_s = df_pasto_s['Calorie'].sum()
+                                t_c_s = df_pasto_s['Carboidrati'].sum()
+                                t_p_s = df_pasto_s['Proteine'].sum()
+                                t_f_s = df_pasto_s['Grassi'].sum()
+                                
+                                # Aggiungo i macros al titolo dell'expander del pasto
+                                with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_s:.0f} kcal | C: {t_c_s:.1f}g | P: {t_p_s:.1f}g | G: {t_f_s:.1f}g)", expanded=False):
                                     for _, row in df_pasto_s.iterrows():
                                         c_text_s, c_del_s = st.columns([0.90, 0.10])
-                                        c_text_s.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f})*")
+                                        # Aggiungo i macros al dettaglio del singolo elemento
+                                        c_text_s.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
                                         if c_del_s.button("❌", key=f"del_storico_{row['ID']}"):
                                             st.info("Eliminazione veloce dallo storico. Usa la selezione giorno per conferme.")
             else:
                 st.write("Nessun altro giorno salvato nel tuo storico.")
 
         with tab_report:
-            rep_mode = st.radio("Seleziona il periodo di analisi:", ["Settimanale (Lun-Dom)", "Mensile"], horizontal=True)
-            df_diario['Data_DT'] = pd.to_datetime(df_diario['Data'], errors='coerce')
+            st.markdown("### 🎛️ Centro di Controllo Nutrizionale")
             
-            if rep_mode == "Settimanale (Lun-Dom)":
-                start_date = data_sel - datetime.timedelta(days=data_sel.weekday())
-                end_date = start_date + datetime.timedelta(days=6)
-                titolo_rep = f"Settimana dal {start_date.strftime('%d/%m/%Y')} al {end_date.strftime('%d/%m/%Y')}"
+            # 1. Filtro Date Dinamico
+            c_date1, c_date2 = st.columns([1, 2])
+            rep_mode = c_date1.radio("Periodo di analisi:", ["Ultimi 7 gg", "Ultimi 30 gg", "Personalizzato"], horizontal=True)
+            
+            oggi = pd.to_datetime('today').date()
+            if rep_mode == "Ultimi 7 gg":
+                start_date = oggi - datetime.timedelta(days=7)
+                end_date = oggi
+            elif rep_mode == "Ultimi 30 gg":
+                start_date = oggi - datetime.timedelta(days=30)
+                end_date = oggi
             else:
-                start_date = data_sel.replace(day=1)
-                last_day = calendar.monthrange(data_sel.year, data_sel.month)[1]
-                end_date = data_sel.replace(day=last_day)
-                mese_nomi = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
-                titolo_rep = f"Mese di {mese_nomi[data_sel.month]} {data_sel.year}"
+                sel_dates = c_date2.date_input("Seleziona intervallo (Inizio - Fine):", [oggi - datetime.timedelta(days=7), oggi])
+                if len(sel_dates) == 2:
+                    start_date, end_date = sel_dates
+                else:
+                    start_date, end_date = oggi, oggi
+
+            # Filtriamo il database in base alle date
+            df_diario['Data_DT'] = pd.to_datetime(df_diario['Data'], format='%Y-%m-%d', errors='coerce').dt.date
+            mask_date = (df_diario['Data_DT'] >= start_date) & (df_diario['Data_DT'] <= end_date)
+            df_rep_base = df_diario[mask_date].copy()
+            
+            if not df_rep_base.empty:
+                st.divider()
                 
-            mask = (df_diario['Data_DT'].dt.date >= start_date) & (df_diario['Data_DT'].dt.date <= end_date)
-            df_rep = df_diario[mask]
-            
-            st.markdown(f"#### {titolo_rep}")
-            
-            if not df_rep.empty:
-                giorni_totali = df_rep['Data'].nunique()
-                c_r1, c_r2, c_r3, c_r4 = st.columns(4)
-                c_r1.metric("🔥 Calorie Totali", f"{df_rep['Calorie'].sum():.0f} kcal", f"Media: {df_rep['Calorie'].sum()/giorni_totali:.0f} /gg")
-                c_r2.metric("🍞 Carb. Totali", f"{df_rep['Carboidrati'].sum():.1f} g", f"Media: {df_rep['Carboidrati'].sum()/giorni_totali:.1f} /gg")
-                c_r3.metric("🥩 Prot. Totali", f"{df_rep['Proteine'].sum():.1f} g", f"Media: {df_rep['Proteine'].sum()/giorni_totali:.1f} /gg")
-                c_r4.metric("🥑 Grassi Totali", f"{df_rep['Grassi'].sum():.1f} g", f"Media: {df_rep['Grassi'].sum()/giorni_totali:.1f} /gg")
-                st.caption(f"Dati aggregati calcolati su **{giorni_totali}** giorni effettivamente registrati in questo periodo.")
-            else: st.info("Nessun dato registrato in questo periodo.")
+                # 2. Filtro Pasti Interattivo
+                st.markdown("#### 🍽️ Analisi Dinamica per Pasti")
+                pasti_disponibili = ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena", "Spuntino Mattina"]
+                
+                # Troviamo i pasti effettivamente presenti nel periodo per evitare filtri vuoti
+                pasti_presenti = [p for p in pasti_disponibili if p in df_rep_base['Pasto'].unique() or (p=="Spuntino" and "Spuntino Mattina" in df_rep_base['Pasto'].unique())]
+                if not pasti_presenti: pasti_presenti = df_rep_base['Pasto'].unique().tolist()
+                
+                pasti_selezionati = st.multiselect(
+                    "Quali pasti vuoi analizzare? (Aggiungi o rimuovi per vedere i totali aggiornarsi in tempo reale)", 
+                    options=pasti_presenti, 
+                    default=pasti_presenti
+                )
+                
+                # Filtriamo il dataframe anche per i pasti selezionati
+                pasti_filter = list(pasti_selezionati)
+                if "Spuntino" in pasti_filter and "Spuntino Mattina" not in pasti_filter:
+                    pasti_filter.append("Spuntino Mattina")
+                    
+                df_rep = df_rep_base[df_rep_base['Pasto'].isin(pasti_filter)]
+                
+                if not df_rep.empty:
+                    giorni_totali = df_rep['Data'].nunique()
+                    
+                    st.write(f"📊 **Totali calcolati dal {start_date.strftime('%d/%m/%Y')} al {end_date.strftime('%d/%m/%Y')} su {giorni_totali} giorni attivi:**")
+                    
+                    # 3. Metriche e KPI
+                    c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+                    tot_cal = df_rep['Calorie'].sum()
+                    tot_c = df_rep['Carboidrati'].sum()
+                    tot_p = df_rep['Proteine'].sum()
+                    tot_f = df_rep['Grassi'].sum()
+                    
+                    c_r1.metric("🔥 Calorie Totali", f"{tot_cal:.0f} kcal", f"Media: {tot_cal/giorni_totali:.0f} /gg")
+                    c_r2.metric("🍞 Carb. Totali", f"{tot_c:.1f} g", f"Media: {tot_c/giorni_totali:.1f} /gg")
+                    c_r3.metric("🥩 Prot. Totali", f"{tot_p:.1f} g", f"Media: {tot_p/giorni_totali:.1f} /gg")
+                    c_r4.metric("🥑 Grassi Totali", f"{tot_f:.1f} g", f"Media: {tot_f/giorni_totali:.1f} /gg")
+                    
+                    st.write("")
+                    
+                    # 4. Grafici Interattivi
+                    c_chart1, c_chart2 = st.columns([1, 1.8])
+                    
+                    with c_chart1:
+                        st.markdown("**Ripartizione Macronutrienti (g)**")
+                        if tot_c + tot_p + tot_f > 0:
+                            # Grafico a Torta (Donut)
+                            fig_pie = px.pie(
+                                names=['Carboidrati', 'Proteine', 'Grassi'],
+                                values=[tot_c, tot_p, tot_f],
+                                color_discrete_sequence=['#FFA07A', '#87CEFA', '#98FB98'],
+                                hole=0.4 # Crea l'effetto "ciambella"
+                            )
+                            fig_pie.update_layout(
+                                margin=dict(t=20, b=20, l=0, r=0), 
+                                height=300,
+                                showlegend=True,
+                                legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
+                            )
+                            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                            st.plotly_chart(fig_pie, use_container_width=True)
+                        else:
+                            st.info("Dati macros insufficienti per il grafico a torta.")
+                            
+                    with c_chart2:
+                        st.markdown("**Andamento Giornaliero Macros**")
+                        # Raggruppa i dati giorno per giorno per il grafico a linee
+                        df_trend = df_rep.groupby('Data')[['Carboidrati', 'Proteine', 'Grassi']].sum().reset_index()
+                        df_trend['Data'] = pd.to_datetime(df_trend['Data'])
+                        df_trend = df_trend.sort_values('Data')
+                        
+                        fig_line = px.line(
+                            df_trend, 
+                            x='Data', 
+                            y=['Carboidrati', 'Proteine', 'Grassi'],
+                            color_discrete_map={'Carboidrati':'#FFA07A', 'Proteine':'#87CEFA', 'Grassi':'#98FB98'},
+                            markers=True
+                        )
+                        fig_line.update_layout(
+                            xaxis_title="", 
+                            yaxis_title="Grammi (g)",
+                            legend_title="", 
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                            margin=dict(t=20, b=20, l=0, r=0), 
+                            height=300,
+                            hovermode="x unified" # Mostra tutti i macros passando col mouse su un giorno
+                        )
+                        st.plotly_chart(fig_line, use_container_width=True)
+                        
+                    # 5. Tabella di Esportazione/Dettaglio
+                    with st.expander("📅 Vedi Tabella Dettaglio Giornaliero"):
+                        df_day = df_rep.groupby('Data')[['Calorie', 'Carboidrati', 'Proteine', 'Grassi']].sum().reset_index()
+                        df_day = df_day.sort_values('Data', ascending=False)
+                        st.dataframe(df_day.style.format({"Calorie": "{:.0f}", "Carboidrati": "{:.1f}", "Proteine": "{:.1f}", "Grassi": "{:.1f}"}), use_container_width=True, hide_index=True)
+
+                else:
+                    st.warning("Nessun dato registrato per i pasti selezionati in questo periodo.")
+            else: 
+                st.info("Nessun dato registrato nell'intervallo di date selezionato.")
 
     except Exception as e:
         st.info(f"Il tuo diario è vuoto o c'è un errore di configurazione in Sheets. {e}")
