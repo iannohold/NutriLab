@@ -9,30 +9,35 @@ import io
 import datetime
 import calendar
 import plotly.express as px
+import json
+import os
 
 st.set_page_config(page_title="NutriLab", page_icon="🧪", layout="wide")
 
 # =========================================================
-# 🔐 1. SISTEMA DI LOGIN NATIVO
+# 🔐 1. SISTEMA DI LOGIN CON ANTI-SCOLLEGAMENTO
 # =========================================================
-# Definisci qui i tuoi utenti. "vincenzo" è impostato come Admin.
 UTENTI = {
     "vins": {"password": "admin!", "nome": "Vincenzo", "is_admin": True},
     "monella": {"password": "user1!", "nome": "Silvia", "is_admin": False},
     "ospite": {"password": "test!", "nome": "Utente Ospite", "is_admin": False}
 }
 
-ADMIN_ID = "vins"  # L'ID utente considerato come Amministratore globale
+ADMIN_ID = "vins" 
 
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "username" not in st.session_state: st.session_state.username = ""
 if "is_admin" not in st.session_state: st.session_state.is_admin = False
 
-# SE NON LOGGATO -> MOSTRA SOLO LA SCHERMATA DI ACCESSO
+if not st.session_state.logged_in and "user" in st.query_params:
+    q_user = st.query_params["user"]
+    if q_user in UTENTI:
+        st.session_state.logged_in = True
+        st.session_state.username = q_user
+        st.session_state.is_admin = UTENTI[q_user]["is_admin"]
+
 if not st.session_state.logged_in:
     st.markdown("<h1 style='text-align: center;'>🔐 Accesso a NutriLab</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Accedi per visualizzare il tuo diario e ricettario personale.</p>", unsafe_allow_html=True)
-    
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("login_form"):
@@ -45,14 +50,15 @@ if not st.session_state.logged_in:
                     st.session_state.logged_in = True
                     st.session_state.username = username_input
                     st.session_state.is_admin = UTENTI[username_input]["is_admin"]
+                    st.query_params["user"] = username_input 
                     st.success("✅ Accesso effettuato!")
                     st.rerun()
                 else:
                     st.error("❌ Username o password errati.")
-    st.stop() # Blocca l'esecuzione del resto dell'app fino al login
+    st.stop()
 
 # =========================================================
-# VARIABILI UTENTE CORRENTE E FOGLIO GOOGLE
+# VARIABILI UTENTE E FOGLIO GOOGLE + OTTIMIZZAZIONE CACHE
 # =========================================================
 USER_ID = st.session_state.username
 IS_ADMIN = st.session_state.is_admin
@@ -60,61 +66,58 @@ SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1xfr_VrhX8Fciz4_o90dTm
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# DB di emergenza
 FALLBACK_DB = {
     "Farina di avena": (370.0, 13.5, 68.0, 7.0, 10.0, 1.2, 0.0, 0.0, "g"),
     "Latte (Senza lattosio)": (47.0, 3.4, 5.0, 1.5, 0.0, 1.0, 0.0, 0.0, "ml"),
     "Uova intere": (143.0, 12.5, 0.6, 9.5, 0.0, 3.1, 0.0, 55.0, "pz")
 }
 
-@st.cache_data(ttl=60)
-def load_database():
+@st.cache_data(ttl=600)  # TTL Aumentato a 10 minuti per velocità
+def get_user_macros_db(user_id):
+    """Funzione ottimizzata che calcola il dizionario Macros solo una volta ogni 10 min o finché non scatta il clear()"""
     try:
-        if "INCOLLA_QUI" in SPREADSHEET_URL: return pd.DataFrame()
+        if "INCOLLA_QUI" in SPREADSHEET_URL: return FALLBACK_DB
         df = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Macros")
         df = df.dropna(subset=['Nome'])
         
-        # Auto-Riparazione colonne
         if 'Var_Cottura' not in df.columns: df['Var_Cottura'] = 0.0
         if 'Peso_Medio_pz' not in df.columns: df['Peso_Medio_pz'] = 0.0
         if 'Unita_Default' not in df.columns: df['Unita_Default'] = 'g'
         if 'User_ID' not in df.columns: df['User_ID'] = ADMIN_ID 
-        return df
-    except Exception: return pd.DataFrame()
-
-df_db = load_database()
-
-MACROS_DB = {}
-if not df_db.empty:
-    # FILTRO DATI: Prodotti Comuni (dell'Admin) + Prodotti Personali (dell'Utente)
-    df_visibile = df_db[(df_db['User_ID'] == ADMIN_ID) | (df_db['User_ID'] == USER_ID)]
-    df_visibile = df_visibile.sort_values('User_ID').drop_duplicates(subset=['Nome'], keep='last')
-
-    for _, row in df_visibile.iterrows():
-        nome = str(row['Nome']).strip()
-        cal = float(row['Calorie']) if 'Calorie' in row and pd.notna(row['Calorie']) else 0.0
-        c = float(row['Carboidrati']) if 'Carboidrati' in row and pd.notna(row['Carboidrati']) else 0.0
-        p = float(row['Proteine']) if 'Proteine' in row and pd.notna(row['Proteine']) else 0.0
-        f = float(row['Grassi']) if 'Grassi' in row and pd.notna(row['Grassi']) else 0.0
-        sat = float(row['di cui saturi']) if 'di cui saturi' in row and pd.notna(row['di cui saturi']) else 0.0
-        fib = float(row['Fibre']) if 'Fibre' in row and pd.notna(row['Fibre']) else 0.0
-        var_cott = float(row['Var_Cottura']) if 'Var_Cottura' in row and pd.notna(row['Var_Cottura']) else 0.0
-        peso_pz = float(row['Peso_Medio_pz']) if 'Peso_Medio_pz' in row and pd.notna(row['Peso_Medio_pz']) else 0.0
-        unita_def = str(row['Unita_Default']).strip().lower() if 'Unita_Default' in row and pd.notna(row['Unita_Default']) else 'g'
-        if unita_def not in ['g', 'ml', 'pz']: unita_def = 'g'
         
-        MACROS_DB[nome] = (cal, p, c, f, fib, sat, var_cott, peso_pz, unita_def)
-else:
-    MACROS_DB = FALLBACK_DB
+        df_visibile = df[(df['User_ID'] == ADMIN_ID) | (df['User_ID'] == user_id)]
+        df_visibile = df_visibile.sort_values('User_ID').drop_duplicates(subset=['Nome'], keep='last')
+        
+        mdb = {}
+        for _, row in df_visibile.iterrows():
+            nome = str(row['Nome']).strip()
+            cal = float(row.get('Calorie', 0.0)) if pd.notna(row.get('Calorie')) else 0.0
+            c = float(row.get('Carboidrati', 0.0)) if pd.notna(row.get('Carboidrati')) else 0.0
+            p = float(row.get('Proteine', 0.0)) if pd.notna(row.get('Proteine')) else 0.0
+            f = float(row.get('Grassi', 0.0)) if pd.notna(row.get('Grassi')) else 0.0
+            sat = float(row.get('di cui saturi', 0.0)) if pd.notna(row.get('di cui saturi')) else 0.0
+            fib = float(row.get('Fibre', 0.0)) if pd.notna(row.get('Fibre')) else 0.0
+            var_cott = float(row.get('Var_Cottura', 0.0)) if pd.notna(row.get('Var_Cottura')) else 0.0
+            peso_pz = float(row.get('Peso_Medio_pz', 0.0)) if pd.notna(row.get('Peso_Medio_pz')) else 0.0
+            unita_def = str(row.get('Unita_Default', 'g')).strip().lower()
+            if unita_def not in ['g', 'ml', 'pz']: unita_def = 'g'
+            
+            mdb[nome] = (cal, p, c, f, fib, sat, var_cott, peso_pz, unita_def)
+        return mdb if mdb else FALLBACK_DB
+    except Exception:
+        return FALLBACK_DB
 
+MACROS_DB = get_user_macros_db(USER_ID)
+
+# =========================================================
+# FUNZIONI CLOUD E RICERCA
+# =========================================================
 def salva_su_cloud(nome, cal, p, c, f, sat, fib, var_cott, peso_pz, unita_def):
     try:
-        df_current = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Macros")
+        df_current = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Macros", ttl=0)
         df_current = df_current.dropna(subset=['Nome'])
-        
         if 'User_ID' not in df_current.columns: df_current['User_ID'] = ADMIN_ID
             
-        # Protezione: Elimina solo l'eventuale versione di questo specifico utente
         mask_esistente = (df_current['Nome'].str.lower() == nome.lower()) & (df_current['User_ID'] == USER_ID)
         df_current = df_current[~mask_esistente]
             
@@ -125,7 +128,6 @@ def salva_su_cloud(nome, cal, p, c, f, sat, fib, var_cott, peso_pz, unita_def):
         })
         df_updated = pd.concat([df_current, nuova_riga], ignore_index=True)
         
-        # Riordina colonne e salva
         cols_final = ["Nome", "Calorie", "Carboidrati", "Proteine", "Grassi", "di cui saturi", "Fibre", "Var_Cottura", "Peso_Medio_pz", "Unita_Default", "User_ID"]
         for col in cols_final:
             if col not in df_updated.columns: df_updated[col] = 0.0
@@ -138,10 +140,9 @@ def salva_su_cloud(nome, cal, p, c, f, sat, fib, var_cott, peso_pz, unita_def):
 
 def elimina_da_cloud(nome):
     try:
-        df_current = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Macros")
+        df_current = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Macros", ttl=0)
         if 'User_ID' not in df_current.columns: df_current['User_ID'] = ADMIN_ID
         
-        # Puoi eliminare SOLO i prodotti creati da te
         mask_da_eliminare = (df_current['Nome'].str.lower() == nome.lower()) & (df_current['User_ID'] == USER_ID)
         df_current = df_current[~mask_da_eliminare]
         
@@ -150,6 +151,7 @@ def elimina_da_cloud(nome):
         return True
     except Exception as e: return False
 
+@st.cache_data(ttl=3600) # Cache pesante per le chiamate API esterne
 def cerca_alimento_web(nome):
     url = f"https://it.openfoodfacts.org/cgi/search.pl?search_terms={nome}&search_simple=1&action=process&json=1&page_size=5"
     try:
@@ -183,6 +185,9 @@ def cerca_locale(nome):
             return True, db_nome, macros[0], macros[1], macros[2], macros[3], macros[4], macros[5], macros[6], macros[7], macros[8]
     return False, "", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "g"
 
+# =========================================================
+# VARIABILI DI SESSIONE E AUTOSAVE IN BACKGROUND
+# =========================================================
 RUOLI_LIST = ["Impasto", "Farcitura", "Topping", "Salsa", "Decorazione", "Altro"]
 CATEGORIE_LIST = ["☕ Colazione", "🍰 Dessert", "🍝 Primo", "🥩 Secondo", "🍲 Piatto unico", "🥪 Spuntino", "💪 Post work-out", "🔹 Altro"]
 
@@ -202,6 +207,37 @@ stati_iniziali = [
 for key, default in stati_iniziali:
     if key not in st.session_state: st.session_state[key] = default
 
+def salva_bozza_locale():
+    if not st.session_state.get('username'): return
+    file_name = f"bozza_{st.session_state.username}.json"
+    try:
+        dati = {"nome_ricetta": st.session_state.get("nome_ricetta", "Nuova Ricetta"), "ingredients": st.session_state.ingredients}
+        with open(file_name, "w") as f: json.dump(dati, f)
+    except: pass
+
+def carica_bozza_locale():
+    if not st.session_state.get('username'): return
+    file_name = f"bozza_{st.session_state.username}.json"
+    if os.path.exists(file_name):
+        try:
+            with open(file_name, "r") as f:
+                dati = json.load(f)
+                st.session_state.nome_ricetta = dati.get("nome_ricetta", "Nuova Ricetta")
+                st.session_state.ingredients = dati.get("ingredients", [])
+        except: pass
+
+if "bozza_recuperata" not in st.session_state:
+    if st.session_state.logged_in: carica_bozza_locale()
+    st.session_state.bozza_recuperata = True
+
+def svuota_laboratorio():
+    st.session_state.ingredients = []
+    st.session_state.nome_ricetta = "Nuova Ricetta"
+    salva_bozza_locale()
+
+# =========================================================
+# FUNZIONI PARSING E CALCOLO
+# =========================================================
 def get_macros_and_match(nome):
     nome_clean = nome.lower().replace("d'", "di ").strip()
     for db_nome, macros in MACROS_DB.items():
@@ -255,6 +291,7 @@ def process_ingredient_list(lines):
             "cal_100": cal, "prot_100": p, "carb_100": c, "fat_100": f, "sat_100": sat, "fib_100": fib
         })
         aggiunti += 1
+    salva_bozza_locale()
     return aggiunti
 
 def ricalcola_ingrediente(ing_id):
@@ -273,6 +310,7 @@ def ricalcola_ingrediente(ing_id):
             ing['sat_100'] = st.session_state.get(f"sat2_{ing_id}", ing['sat_100'])
             ing['fib_100'] = st.session_state.get(f"fib2_{ing_id}", ing['fib_100'])
             break
+    salva_bozza_locale()
 
 def safe_fl(val, default=0.0):
     try: return float(val) if pd.notna(val) else default
@@ -295,10 +333,8 @@ def ripristina_ricetta(df):
     st.session_state.temp_cot = int(safe_fl(row0.get('Cottura_Temperatura', 180)))
     st.session_state.tipo_resa = str(row0.get('Cottura_TipoResa', 'Usa % di stima'))
     
-    if 'Cottura_Variazione' in row0:
-        st.session_state.var_cottura = float(safe_fl(row0['Cottura_Variazione'], -15.0))
-    else:
-        st.session_state.var_cottura = -float(safe_fl(row0.get('Cottura_Calo', 15.0)))
+    if 'Cottura_Variazione' in row0: st.session_state.var_cottura = float(safe_fl(row0['Cottura_Variazione'], -15.0))
+    else: st.session_state.var_cottura = -float(safe_fl(row0.get('Cottura_Calo', 15.0)))
         
     st.session_state.peso_cotto_reale = float(safe_fl(row0.get('Cottura_PesoReale', 85.0)))
     st.session_state.qta_teglia = float(safe_fl(row0.get('Cottura_QtaTeglia', 100.0)))
@@ -316,6 +352,7 @@ def ripristina_ricetta(df):
             "carb_100": safe_fl(row.get('Carb_100g'), 0.0), "fat_100": safe_fl(row.get('Fat_100g'), 0.0),
             "sat_100": safe_fl(row.get('Sat_100g'), 0.0), "fib_100": safe_fl(row.get('Fib_100g'), 0.0)
         })
+    salva_bozza_locale()
 
 # ==========================================
 # 🧭 BARRA LATERALE E NAVIGAZIONE
@@ -326,6 +363,7 @@ if st.sidebar.button("🚪 Logout", use_container_width=True):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.session_state.is_admin = False
+    if "user" in st.query_params: del st.query_params["user"]
     st.cache_data.clear()
     st.rerun()
 
@@ -348,9 +386,12 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
         st.markdown(f"<h2 style='color: #FF4B4B;'>{nome_ric_display}</h2>", unsafe_allow_html=True)
         st.write("")
 
-    col_titolo, col_ricarica = st.columns([4, 1])
+    col_titolo, col_svuota, col_ricarica = st.columns([3, 1, 1])
     with col_titolo:
         st.markdown("### :green[1. Aggiungi Ingredienti]")
+    with col_svuota:
+        st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
+        st.button("🧹 Svuota Laboratorio", on_click=svuota_laboratorio, use_container_width=True)
     with col_ricarica:
         st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
         if st.button("🔄 Ricarica Database", use_container_width=True):
@@ -431,6 +472,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
                     "fib_100": float(st.session_state.get("input_fib") or 0.0)
                 })
                 st.session_state.input_qty = None; st.session_state.ing_scelto = "-- Seleziona --"; st.session_state.input_ruolo = "Impasto"
+            salva_bozza_locale()
 
         can_add = True
         if unit == "pz" and pz_w <= 0:
@@ -445,7 +487,6 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
             df_ricette = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Ricette")
             df_ricette = df_ricette.dropna(subset=['Nome Ricetta'])
             
-            # Auto-riparazione
             if 'User_ID' not in df_ricette.columns: df_ricette['User_ID'] = ADMIN_ID
             if 'Condivisa' not in df_ricette.columns: df_ricette['Condivisa'] = True
 
@@ -585,6 +626,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
         col_desel.button("🔲 Deseleziona", on_click=lambda: [st.session_state.update({f"chk_del_{i['id']}": False}) for i in st.session_state.ingredients], use_container_width=True)
         if col_del.button("🗑️ Elimina Selezionati", type="primary", use_container_width=True):
             st.session_state.ingredients = [i for i in st.session_state.ingredients if not st.session_state.get(f"chk_del_{i['id']}", False)]
+            salva_bozza_locale()
             st.rerun()
         
         for ing in st.session_state.ingredients:
@@ -664,6 +706,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
 
                     if r2_del.button("🗑️", key=f"del_sn_{ing['id']}"):
                         st.session_state.ingredients = [it for it in st.session_state.ingredients if it['id'] != ing['id']]
+                        salva_bozza_locale()
                         st.rerun()
 
         st.divider()
@@ -835,7 +878,6 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
                 txt_exp += f"\n  [{r_ord.upper()}]\n"
                 for i in st.session_state.ingredients:
                     if i.get('ruolo', 'Impasto') == r_ord:
-                        # NOVITÀ: Aggiunge i grammi tra parentesi solo se l'unità è in pezzi
                         peso_extra = f" ({i['peso']:.0f}g)" if i['unita'] == 'pz' else ""
                         txt_exp += f"  - {i['quantita']} {i['unita']} {i['nome']}{peso_extra}\n"
         
@@ -896,7 +938,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
             if n_ric and st.session_state.ingredients:
                 with st.spinner("Salvataggio in corso..."):
                     try:
-                        df_ricette = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Ricette")
+                        df_ricette = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Ricette", ttl=0)
                         if 'User_ID' not in df_ricette.columns: df_ricette['User_ID'] = ADMIN_ID
                         if 'Condivisa' not in df_ricette.columns: df_ricette['Condivisa'] = True
 
@@ -914,6 +956,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
                         
                         df_updated = pd.concat([df_ricette, nuova_riga], ignore_index=True)
                         conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Ricette", data=df_updated)
+                        st.cache_data.clear()
                         st.success("✅ Ricetta salvata nel Database!")
                     except Exception as e:
                         st.error(f"Errore durante il salvataggio. Assicurati che in Sheets ci siano le colonne 'Nome Ricetta', 'Categoria', 'Dati JSON', 'User_ID', 'Condivisa'. Errore tecnico: {e}")
@@ -1087,7 +1130,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
             ready_to_add = True
 
     # ---------------------------------------------------------
-    # FLUSSO 2: ALIMENTI (SINGOLI O MULTIPLI) - CON DIVISIONE
+    # FLUSSO 2: ALIMENTI (SINGOLI O MULTIPLI)
     # ---------------------------------------------------------
     elif tipo_inserimento_diario == "🛒 Alimenti (Singoli o Multipli)":
         st.markdown("### 1️⃣ Componi il pasto")
@@ -1112,7 +1155,6 @@ elif pagina_corrente == "📅 Diario Alimentare":
         else: 
             pz_w = 0.0
 
-        # --- ANTEPRIMA NUTRIZIONALE LIVE ---
         if ing_scelto != "-- Seleziona --" and qta_val is not None and qta_val > 0:
             cal_p, p_p, c_p, f_p, _, _, _, _, _ = MACROS_DB[ing_scelto]
             peso_p = qta_val * pz_w if unit_val == "pz" else qta_val
@@ -1216,14 +1258,12 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 else:
                     m_peso_tot += peso_effettivo
                 
-                # --- VISUALIZZAZIONE MACROS NEL VASSOIO ---
                 c1.write(f"🔹 **{item['nome']}** {p_cotto_str} *(Cal: {cal_i:.0f} | C: {c_i:.1f}g | P: {p_i:.1f}g | G: {f_i:.1f}g)*")
                 ingredienti_list.append(f"{new_qty:g}{item['unita']} {item['nome']}")
                 
             st.write("")
             st.info(f"⚖️ **Peso Totale del Vassoio:** {m_peso_tot:.1f} g")
             
-            # NUOVO: LOGICA DI PORZIONAMENTO AVANZATA DEL VASSOIO
             st.markdown("#### 🥧 Resa e Porzioni del Vassoio")
             
             num_porzioni = st.number_input("In quante porzioni totali dividi questo vassoio? (max 5)", min_value=1, max_value=5, step=1, value=1)
@@ -1266,12 +1306,10 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 perc = porzioni_perc[i]
                 with cols_chk[i]:
                     if perc >= 0:
-                        # Di default spunta solo la prima porzione
                         mangio = st.checkbox(f"🍽️ Mangio Porz. {i+1} ({perc:.1f}%)", value=(i==0), key=f"mangio_chk_{i}")
                         if mangio:
                             porzioni_selezionate.append(i)
                         
-                        # Mostra peso e calorie della singola porzione
                         p_peso = m_peso_tot * (perc / 100.0)
                         p_cal = m_cal_tot * (perc / 100.0)
                         st.caption(f"⚖️ {p_peso:.1f} g\n🔥 {p_cal:.0f} kcal")
@@ -1308,7 +1346,8 @@ elif pagina_corrente == "📅 Diario Alimentare":
                         "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
                         "Elemento": f"📦 {nome_gruppo.strip()} [{dettaglio}]", "Quantita": tot_perc_consumata, "Unita": "%",
                         "Calorie": m_cal_tot * rt_consumo_vassoio, "Carboidrati": m_c_tot * rt_consumo_vassoio, "Proteine": m_p_tot * rt_consumo_vassoio,
-                        "Grassi": m_f_tot * rt_consumo_vassoio, "Saturi": m_sat_tot * rt_consumo_vassoio, "Fibre": m_fib_tot * rt_consumo_vassoio, "User_ID": USER_ID
+                        "Grassi": m_f_tot * rt_consumo_vassoio, "Saturi": m_sat_tot * rt_consumo_vassoio, "Fibre": m_fib_tot * rt_consumo_vassoio, "User_ID": USER_ID,
+                        "TGT_Cal": tgt_cal, "TGT_C": tgt_c, "TGT_P": tgt_p, "TGT_F": tgt_f
                     })
                 else:
                     for item in st.session_state.diario_multi_items:
@@ -1329,7 +1368,8 @@ elif pagina_corrente == "📅 Diario Alimentare":
                             "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
                             "Elemento": f"🛒 {item['nome']}{p_cotto_str}", "Quantita": qty_finale_salvata, "Unita": item['unita'],
                             "Calorie": cal_i, "Carboidrati": c_i, "Proteine": p_i,
-                            "Grassi": f_i, "Saturi": sat_i, "Fibre": fib_i, "User_ID": USER_ID
+                            "Grassi": f_i, "Saturi": sat_i, "Fibre": fib_i, "User_ID": USER_ID,
+                            "TGT_Cal": tgt_cal, "TGT_C": tgt_c, "TGT_P": tgt_p, "TGT_F": tgt_f
                         })
                 ready_to_add = True
 
@@ -1358,7 +1398,6 @@ elif pagina_corrente == "📅 Diario Alimentare":
         else: 
             pz_w_lib = 0.0
 
-        # --- ANTEPRIMA NUTRIZIONALE LIVE ---
         if ing_libero != "-- Seleziona --" and qta_libera is not None and qta_libera > 0:
             cal_l, p_l, c_l, f_l, _, _, _, _, _ = MACROS_DB[ing_libero]
             peso_l = qta_libera * pz_w_lib if unit_libera == "pz" else qta_libera
@@ -1411,7 +1450,6 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 m_cal_tot += cal_i; m_p_tot += p_i; m_c_tot += c_i; m_f_tot += f_i
                 m_sat_tot += (sat / 100) * peso_eff; m_fib_tot += (fib / 100) * peso_eff
                 
-                # --- VISUALIZZAZIONE MACROS NELLA RICETTA LIBERA ---
                 c1.write(f"🔹 **{ing['nome']}** *(Cal: {cal_i:.0f} | C: {c_i:.1f}g | P: {p_i:.1f}g | G: {f_i:.1f}g)*")
                 
             nome_libera = st.text_input("Dai un nome per ricordarla nel diario:", "Pasto al volo")
@@ -1501,7 +1539,8 @@ elif pagina_corrente == "📅 Diario Alimentare":
                     "ID": uuid.uuid4().hex, "Data": str(data_sel), "Pasto": pasto_sel,
                     "Elemento": elemento_inserito, "Quantita": tot_perc_consumata_lib, "Unita": "%",
                     "Calorie": m_cal_tot * rt_consumo_lib, "Carboidrati": m_c_tot * rt_consumo_lib, "Proteine": m_p_tot * rt_consumo_lib,
-                    "Grassi": m_f_tot * rt_consumo_lib, "Saturi": m_sat_tot * rt_consumo_lib, "Fibre": m_fib_tot * rt_consumo_lib, "User_ID": USER_ID
+                    "Grassi": m_f_tot * rt_consumo_lib, "Saturi": m_sat_tot * rt_consumo_lib, "Fibre": m_fib_tot * rt_consumo_lib, "User_ID": USER_ID,
+                    "TGT_Cal": tgt_cal, "TGT_C": tgt_c, "TGT_P": tgt_p, "TGT_F": tgt_f
                 })
                 ready_to_add = True
 
@@ -1869,287 +1908,6 @@ elif pagina_corrente == "📅 Diario Alimentare":
         st.info(f"Il tuo diario è vuoto o c'è un errore di configurazione in Sheets. {e}")
 
 # ==========================================
-# 🗄️ PAGINA 3: DATABASE PRODOTTI
-# ==========================================
-elif pagina_corrente == "🗄️ Database Prodotti":
-    
-    st.title("🗄️ Database Prodotti")
-    st.markdown("#### *Gestisci i tuoi ingredienti, consulta la lista e importa dal web.* 🛒")
-    st.write("")
-
-    # 1. NUOVO ORDINE DELLE AZIONI
-    azione_db = st.radio("Scegli un'azione:", [
-        "📋 Archivio e Gestione Prodotti", 
-        "➕ Aggiungi Nuovo (Web / Manuale)", 
-        "🗂️ Duplica Esistente"
-    ], horizontal=True)
-    
-    st.divider()
-
-    # ---------------------------------------------------------
-    # AZIONE 1: ARCHIVIO E GESTIONE PRODOTTI
-    # ---------------------------------------------------------
-    if azione_db == "📋 Archivio e Gestione Prodotti":
-        
-        st.markdown("### ✏️ Cerca e Modifica al volo")
-        prodotto_mod = st.selectbox("Cerca qui il prodotto da gestire:", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())), key="sel_mod_db")
-        
-        if prodotto_mod != "-- Seleziona --":
-            cal_m, p_m, c_m, f_m, fib_m, sat_m, var_m, peso_m, unita_m = MACROS_DB[prodotto_mod]
-            
-            # Controllo permessi
-            is_global = not df_db[(df_db['Nome'].str.lower() == prodotto_mod.lower()) & (df_db['User_ID'] == ADMIN_ID)].empty
-            can_edit = IS_ADMIN or not is_global
-            
-            if not can_edit:
-                st.error("🔒 **Prodotto di Nutrilab.** Non hai i permessi per modificarlo o eliminarlo. Se vuoi personalizzarlo, vai nella scheda 'Duplica Esistente'.")
-            
-            st.write("")
-            c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([1.5, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 1, 1, 1.2])
-            
-            mod_n = c1.text_input("Nome", value=prodotto_mod, key="mod_n", disabled=not can_edit)
-            mod_cal = c2.number_input("Cal", value=float(cal_m), step=1.0, key="mod_cal", disabled=not can_edit)
-            mod_c = c3.number_input("Carb", value=float(c_m), step=0.1, key="mod_c", disabled=not can_edit)
-            mod_p = c4.number_input("Prot", value=float(p_m), step=0.1, key="mod_p", disabled=not can_edit)
-            mod_f = c5.number_input("Gras", value=float(f_m), step=0.1, key="mod_f", disabled=not can_edit)
-            mod_sat = c6.number_input("Sat", value=float(sat_m), step=0.1, key="mod_sat", disabled=not can_edit)
-            mod_fib = c7.number_input("Fib", value=float(fib_m), step=0.1, key="mod_fib", disabled=not can_edit)
-            mod_var = c8.number_input("% V.Cott", value=float(var_m), step=1.0, key="mod_var", disabled=not can_edit)
-            mod_peso = c9.number_input("Peso 1pz", value=float(peso_m), step=1.0, key="mod_peso", disabled=not can_edit)
-            
-            idx_u_mod = ["g", "ml", "pz"].index(unita_m) if unita_m in ["g", "ml", "pz"] else 0
-            mod_unita = c10.selectbox("Unità Default", options=["g", "ml", "pz"], index=idx_u_mod, key="mod_udef", disabled=not can_edit)
-            
-            if can_edit:
-                st.write("")
-                col_save, col_del = st.columns(2)
-                if col_save.button("💾 Aggiorna Modifiche", type="primary", use_container_width=True):
-                    with st.spinner("Aggiornamento in corso..."):
-                        if mod_n.strip().lower() != prodotto_mod.lower():
-                            elimina_da_cloud(prodotto_mod)
-                        salva_su_cloud(mod_n, mod_cal, mod_p, mod_c, mod_f, mod_sat, mod_fib, mod_var, mod_peso, mod_unita)
-                        st.success("✅ Prodotto aggiornato con successo!")
-                        st.rerun()
-                        
-                if col_del.button("🗑️ Elimina Prodotto", type="secondary", use_container_width=True):
-                    st.session_state.confirm_del_prod = prodotto_mod
-                    
-                if st.session_state.get('confirm_del_prod') == prodotto_mod:
-                    st.warning(f"⚠️ Sei sicuro di voler eliminare definitivamente '{prodotto_mod}' dal tuo archivio?")
-                    cy, cn = st.columns(2)
-                    if cy.button("🚨 Sì, Elimina", type="primary"):
-                        with st.spinner("Eliminazione in corso..."):
-                            successo = elimina_da_cloud(prodotto_mod)
-                            st.session_state.confirm_del_prod = None
-                            if successo: st.success("✅ Prodotto eliminato!")
-                            else: st.error("Errore nell'eliminazione.")
-                            st.rerun()
-                    if cn.button("❌ Annulla"):
-                        st.session_state.confirm_del_prod = None
-                        st.rerun()
-        
-        st.divider()
-        
-        st.markdown("### 📊 Panoramica del Database")
-        st.write("Consulta tutti i prodotti disponibili. Clicca sulle intestazioni per ordinare dal maggiore al minore e viceversa.")
-        
-        # Generiamo un DataFrame pulito per la visualizzazione
-        lista_view = []
-        for n, macros in MACROS_DB.items():
-            cal, p, c, f, fib, sat, var, pz_w, u_def = macros
-            # Determina se il prodotto è dell'admin controllando il DataFrame originale
-            user_owner = df_db[df_db['Nome'].str.lower() == n.lower()]['User_ID'].iloc[0] if not df_db[df_db['Nome'].str.lower() == n.lower()].empty else ADMIN_ID
-            proprietario = "🌍 Nutrilab" if user_owner == ADMIN_ID else "👤 Personale"
-            
-            lista_view.append({
-                "Nome Prodotto": n, "Calorie": cal, "Carboidrati": c, "Proteine": p, 
-                "Grassi": f, "Unità": u_def, "Peso 1pz": pz_w, "% Cottura": var, "Proprietario": proprietario
-            })
-            
-        df_view = pd.DataFrame(lista_view)
-        
-        # Mostra tabella interattiva (ordinabile e filtrabile dall'utente)
-        st.dataframe(df_view, use_container_width=True, hide_index=True)
-
-   # ---------------------------------------------------------
-    # AZIONE 2: AGGIUNGI NUOVO (WEB / MANUALE)
-    # ---------------------------------------------------------
-    elif azione_db == "➕ Aggiungi Nuovo (Web / Manuale)":
-        
-        # --- FIX STREAMLIT: GESTIONE MESSAGGI E RESET CAMPI ---
-        if st.session_state.get("do_clear_add"):
-            st.session_state.add_n = ""
-            st.session_state.add_cal = 0.0
-            st.session_state.add_c = 0.0
-            st.session_state.add_p = 0.0
-            st.session_state.add_f = 0.0
-            st.session_state.add_sat = 0.0
-            st.session_state.add_fib = 0.0
-            st.session_state.add_var = 0.0
-            st.session_state.add_peso = 0.0
-            st.session_state.add_udef = "g"
-            st.session_state.do_clear_add = False
-            
-        if st.session_state.get("msg_add_ok"):
-            st.success(st.session_state.msg_add_ok)
-            st.session_state.msg_add_ok = ""
-            
-        st.markdown("### 🌐 Cerca sul Web o Inserisci Manualmente")
-        c_search, c_btn, c_clear = st.columns([2.5, 1, 1])
-        search_term = c_search.text_input("Cerca alimento (es. Mela, Pollo):", key="search_term_db")
-        
-        if c_btn.button("🔍 Cerca (Locale + Web)", use_container_width=True):
-            if search_term:
-                with st.spinner("Ricerca in corso..."):
-                    trovato_loc, n_loc, cal, p, c, f, fib, sat, var_cott, peso_pz, unita_def = cerca_locale(search_term)
-                    if trovato_loc:
-                        st.session_state.add_n = n_loc; st.session_state.add_cal = float(cal); st.session_state.add_p = float(p)
-                        st.session_state.add_c = float(c); st.session_state.add_f = float(f); st.session_state.add_fib = float(fib)
-                        st.session_state.add_sat = float(sat); st.session_state.add_var = float(var_cott)
-                        st.session_state.add_peso = float(peso_pz); st.session_state.add_udef = unita_def
-                        st.success(f"✅ Prodotto già trovato nel Database Locale come '{n_loc}'!")
-                    else:
-                        trovato_web, cal, p, c, f, fib, sat, var_cott, peso_pz, unita_def = cerca_alimento_web(search_term)
-                        if trovato_web:
-                            st.session_state.add_n = search_term.title(); st.session_state.add_cal = float(cal); st.session_state.add_p = float(p)
-                            st.session_state.add_c = float(c); st.session_state.add_f = float(f); st.session_state.add_fib = float(fib)
-                            st.session_state.add_sat = float(sat); st.session_state.add_var = 0.0
-                            st.session_state.add_peso = 0.0; st.session_state.add_udef = "g"
-                            st.success(f"🌐 Prodotto trovato sul Web (OpenFoodFacts)! Verifica i dati prima di salvare.")
-                        else:
-                            st.session_state.add_n = search_term.title(); st.session_state.add_cal = 0.0; st.session_state.add_p = 0.0
-                            st.session_state.add_c = 0.0; st.session_state.add_f = 0.0; st.session_state.add_fib = 0.0
-                            st.session_state.add_sat = 0.0; st.session_state.add_var = 0.0; st.session_state.add_peso = 0.0; st.session_state.add_udef = "g"
-                            st.warning("⚠️ Nessun risultato trovato. I campi sono stati preparati per l'inserimento manuale.")
-
-        if c_clear.button("🧹 Svuota Campi", use_container_width=True):
-            st.session_state.add_n = ""; st.session_state.add_cal = 0.0; st.session_state.add_p = 0.0
-            st.session_state.add_c = 0.0; st.session_state.add_f = 0.0; st.session_state.add_sat = 0.0
-            st.session_state.add_fib = 0.0; st.session_state.add_var = 0.0; st.session_state.add_peso = 0.0; st.session_state.add_udef = "g"
-            st.rerun()
-
-        st.write("")
-        st.markdown("**Verifica e salva i valori (su 100g/ml) del nuovo prodotto:**")
-        c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([1.5, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 1, 1, 1.2])
-        
-        db_n = c1.text_input("Nome", key="add_n")
-        db_cal = c2.number_input("Cal", step=1.0, key="add_cal")
-        db_c = c3.number_input("Carb", step=0.1, key="add_c")
-        db_p = c4.number_input("Prot", step=0.1, key="add_p")
-        db_f = c5.number_input("Gras", step=0.1, key="add_f")
-        db_sat = c6.number_input("Sat", step=0.1, key="add_sat")
-        db_fib = c7.number_input("Fib", step=0.1, key="add_fib")
-        db_var = c8.number_input("% V.Cott", step=1.0, key="add_var")
-        db_peso_pz = c9.number_input("Peso 1pz", step=1.0, key="add_peso")
-        db_unita_def = c10.selectbox("Unità Default", options=["g", "ml", "pz"], key="add_udef")
-
-        st.write("")
-        if st.button("➕ Salva nel Database", type="primary"):
-            if db_n:
-                esiste_gia = db_n.strip().lower() in [k.lower() for k in MACROS_DB.keys()]
-                
-                if esiste_gia:
-                    st.session_state.show_dup_warning = db_n
-                else:
-                    with st.spinner("Salvataggio in Cloud..."):
-                        success = salva_su_cloud(db_n, db_cal, db_p, db_c, db_f, db_sat, db_fib, db_var, db_peso_pz, db_unita_def)
-                        if success:
-                            st.session_state.msg_add_ok = f"✅ '{db_n}' salvato nel tuo database personale!"
-                            st.session_state.do_clear_add = True
-                            st.rerun()
-            else: 
-                st.warning("Inserisci il nome del prodotto prima di salvare.")
-
-        # Gestione Avviso Duplicato fuori dal pulsante principale
-        if st.session_state.get("show_dup_warning") == db_n:
-            st.error(f"⚠️ Attenzione! Esiste già un prodotto chiamato **'{db_n}'** nel database.")
-            st.write("Se procedi, andrai a sovrascrivere/aggiornare i valori di quello esistente (se hai i permessi).")
-            
-            cy, cn = st.columns(2)
-            if cy.button("🚨 Sì, Sovrascrivi", type="primary"):
-                with st.spinner("Sovrascrittura in Cloud..."):
-                    salva_su_cloud(db_n, db_cal, db_p, db_c, db_f, db_sat, db_fib, db_var, db_peso_pz, db_unita_def)
-                    st.session_state.show_dup_warning = None
-                    st.session_state.msg_add_ok = "✅ Prodotto aggiornato e salvato!"
-                    st.session_state.do_clear_add = True
-                    st.rerun()
-            if cn.button("❌ No, annulla e cambia nome"):
-                st.session_state.show_dup_warning = None
-                st.rerun()
-
-    # ---------------------------------------------------------
-    # AZIONE 3: DUPLICA ESISTENTE
-    # ---------------------------------------------------------
-    elif azione_db == "🗂️ Duplica Esistente":
-        
-        # --- FIX STREAMLIT: GESTIONE MESSAGGI E RESET CAMPI ---
-        if st.session_state.get("do_clear_dup"):
-            st.session_state.dup_n = ""
-            st.session_state.dup_cal = 0.0
-            st.session_state.dup_c = 0.0
-            st.session_state.dup_p = 0.0
-            st.session_state.dup_f = 0.0
-            st.session_state.dup_sat = 0.0
-            st.session_state.dup_fib = 0.0
-            st.session_state.dup_var = 0.0
-            st.session_state.dup_peso = 0.0
-            st.session_state.dup_udef = "g"
-            st.session_state.do_clear_dup = False
-            
-        if st.session_state.get("msg_dup_ok"):
-            st.success(st.session_state.msg_dup_ok)
-            st.session_state.msg_dup_ok = ""
-            
-        st.markdown("### 🗂️ Usa un prodotto esistente come base")
-        c_dup, c_btn_dup = st.columns([3, 1])
-        prodotto_da_duplicare = c_dup.selectbox("Seleziona un prodotto dal database:", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())), key="dup_db_sel")
-        
-        with c_btn_dup:
-            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
-            if st.button("🔄 Carica Valori Originali", use_container_width=True):
-                if prodotto_da_duplicare != "-- Seleziona --":
-                    cal, p, c, f, fib, sat, var, peso_db, unita_db = MACROS_DB[prodotto_da_duplicare]
-                    
-                    st.session_state.dup_n = prodotto_da_duplicare + " (Personalizzato)"
-                    st.session_state.dup_cal = float(cal); st.session_state.dup_p = float(p)
-                    st.session_state.dup_c = float(c); st.session_state.dup_f = float(f)
-                    st.session_state.dup_sat = float(sat); st.session_state.dup_fib = float(fib)
-                    st.session_state.dup_var = float(var); st.session_state.dup_peso = float(peso_db); st.session_state.dup_udef = unita_db
-                    
-                    st.success(f"✅ Valori di '{prodotto_da_duplicare}' caricati. Modifica il nome e salva la tua variante!")
-                else: 
-                    st.warning("Seleziona prima un prodotto dalla tendina.")
-
-        st.write("")
-        st.markdown("**Modifica i valori e salva come nuovo prodotto**")
-        c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([1.5, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 1, 1, 1.2])
-        
-        db_n = c1.text_input("Nome Variante", key="dup_n")
-        db_cal = c2.number_input("Cal", step=1.0, key="dup_cal")
-        db_c = c3.number_input("Carb", step=0.1, key="dup_c")
-        db_p = c4.number_input("Prot", step=0.1, key="dup_p")
-        db_f = c5.number_input("Gras", step=0.1, key="dup_f")
-        db_sat = c6.number_input("Sat", step=0.1, key="dup_sat")
-        db_fib = c7.number_input("Fib", step=0.1, key="dup_fib")
-        db_var = c8.number_input("% V.Cott", step=1.0, key="dup_var")
-        db_peso_pz = c9.number_input("Peso 1pz", step=1.0, key="dup_peso")
-        db_unita_def = c10.selectbox("Unità Default", options=["g", "ml", "pz"], key="dup_udef")
-
-        st.write("")
-        if st.button("➕ Salva Nuova Variante", type="primary"):
-            if db_n and " (Personalizzato)" not in db_n:
-                with st.spinner("Salvataggio in Cloud..."):
-                    success = salva_su_cloud(db_n, db_cal, db_p, db_c, db_f, db_sat, db_fib, db_var, db_peso_pz, db_unita_def)
-                    if success: 
-                        st.session_state.msg_dup_ok = f"✅ Variante '{db_n}' salvata correttamente!"
-                        st.session_state.do_clear_dup = True
-                        st.rerun()
-            elif " (Personalizzato)" in db_n:
-                st.error("⚠️ Rinomina il prodotto eliminando la scritta '(Personalizzato)' prima di salvare.")
-            else: 
-                st.warning("Inserisci il nome della variante.")
-
-# ==========================================
 # 👤 PAGINA 4: PROFILO E OBIETTIVI
 # ==========================================
 elif pagina_corrente == "👤 Profilo e Obiettivi":
@@ -2267,4 +2025,4 @@ elif pagina_corrente == "👤 Profilo e Obiettivi":
             except Exception as e:
                 st.error(f"Errore di salvataggio. Assicurati di aver creato il foglio 'Profilo' in Google Sheets. Errore: {e}")
 
-st.markdown("<br><br><div style='text-align: center; color: gray;'><small>⚡ Powerd by iannovins</small></div>", unsafe_allow_html=True)      
+st.markdown("<br><br><div style='text-align: center; color: gray;'><small>⚡ Powerd by iannovins</small></div>", unsafe_allow_html=True)
