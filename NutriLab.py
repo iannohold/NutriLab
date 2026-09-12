@@ -1927,6 +1927,13 @@ elif pagina_corrente == "🗄️ Database Prodotti":
     st.markdown("#### *Gestisci i tuoi ingredienti, consulta la lista e importa dal web.* 🛒")
     st.write("")
 
+    # --- FIX: RECUPERO IL DATAFRAME DALLA CACHE PER I PERMESSI ---
+    try:
+        df_db = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Macros", ttl=600)
+        if 'User_ID' not in df_db.columns: df_db['User_ID'] = ADMIN_ID
+    except:
+        df_db = pd.DataFrame(columns=["Nome", "User_ID"])
+
     # 1. NUOVO ORDINE DELLE AZIONI
     azione_db = st.radio("Scegli un'azione:", [
         "📋 Archivio e Gestione Prodotti", 
