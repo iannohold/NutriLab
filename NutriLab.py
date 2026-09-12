@@ -2468,4 +2468,79 @@ elif pagina_corrente == "👤 Profilo e Obiettivi":
             except Exception as e:
                 st.error(f"Errore di salvataggio. Assicurati di aver creato il foglio 'Profilo' in Google Sheets. Errore: {e}")
 
+# ==========================================
+# 📦 PAGINA 5: DISPENSA
+# ==========================================
+elif pagina_corrente == "📦 Dispensa":
+    st.title("📦 La tua Dispensa")
+    st.markdown("#### *Gestisci i tuoi ingredienti a casa e monitora le scorte automaticamente.* 🥫")
+    st.write("")
+    
+    try:
+        df_dispensa = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Dispensa", ttl=0)
+        expected_cols = ["User_ID", "Nome", "Quantita", "Unita", "Monitora"]
+        for c in expected_cols:
+            if c not in df_dispensa.columns: df_dispensa[c] = None
+        df_dispensa = df_dispensa[expected_cols]
+    except Exception:
+        df_dispensa = pd.DataFrame(columns=["User_ID", "Nome", "Quantita", "Unita", "Monitora"])
+        
+    dispensa_user = df_dispensa[df_dispensa['User_ID'] == USER_ID].copy()
+    
+    c_add1, c_add2, c_add3 = st.columns([2, 1, 1])
+    with c_add1:
+        nuovo_ing = st.selectbox("Aggiungi prodotto alla dispensa:", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())))
+    with c_add2:
+        nuova_qta = st.number_input("Quantità iniziale:", min_value=0.0, step=50.0, value=0.0)
+    with c_add3:
+        st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+        if st.button("➕ Aggiungi alla Dispensa", use_container_width=True):
+            if nuovo_ing != "-- Seleziona --":
+                if (nuovo_ing not in dispensa_user['Nome'].values):
+                    unita_def = MACROS_DB[nuovo_ing][8] 
+                    nuova_riga = pd.DataFrame([{"User_ID": USER_ID, "Nome": nuovo_ing, "Quantita": nuova_qta, "Unita": unita_def, "Monitora": True}])
+                    df_dispensa_upd = pd.concat([df_dispensa, nuova_riga], ignore_index=True)
+                    conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Dispensa", data=df_dispensa_upd)
+                    st.cache_data.clear()
+                    st.success(f"✅ {nuovo_ing} aggiunto in dispensa!")
+                    st.rerun()
+                else:
+                    st.warning("Il prodotto è già in dispensa. Modifica la quantità dalla tabella qui sotto.")
+    
+    st.divider()
+    
+    if not dispensa_user.empty:
+        st.write("✏️ **Modifica le tue scorte:** Clicca sulla tabella per cambiare le quantità a mano o attivare/disattivare il monitoraggio. Se il monitoraggio è attivo (☑️), l'app scalerà in automatico la quantità quando inserisci un pasto nel Diario.")
+        
+        df_editor = dispensa_user[['Nome', 'Quantita', 'Unita', 'Monitora']].copy()
+        df_editor['Monitora'] = df_editor['Monitora'].astype(bool)
+        
+        edited_df = st.data_editor(
+            df_editor,
+            column_config={
+                "Nome": st.column_config.TextColumn("Prodotto", disabled=True),
+                "Quantita": st.column_config.NumberColumn("Quantità Rimanente", min_value=0.0, format="%.1f"),
+                "Unita": st.column_config.TextColumn("Unità", disabled=True),
+                "Monitora": st.column_config.CheckboxColumn("Sottrai in automatico dal Diario?")
+            },
+            hide_index=True,
+            use_container_width=True,
+            key="editor_dispensa"
+        )
+        
+        if st.button("💾 Salva Modifiche Dispensa", type="primary"):
+            with st.spinner("Aggiornamento scorte..."):
+                for _, r in edited_df.iterrows():
+                    mask = (df_dispensa['User_ID'] == USER_ID) & (df_dispensa['Nome'] == r['Nome'])
+                    if mask.any():
+                        idx = df_dispensa[mask].index[0]
+                        df_dispensa.at[idx, 'Quantita'] = r['Quantita']
+                        df_dispensa.at[idx, 'Monitora'] = r['Monitora']
+                conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Dispensa", data=df_dispensa)
+                st.cache_data.clear()
+                st.success("✅ Dispensa aggiornata!")
+                st.rerun()
+    else:
+        st.info("La tua dispensa è vuota. Aggiungi i prodotti che vuoi tenere sotto controllo!")
+
 st.markdown("<br><br><div style='text-align: center; color: gray;'><small>⚡ Powerd by iannovins</small></div>", unsafe_allow_html=True)
