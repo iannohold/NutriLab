@@ -1306,13 +1306,19 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 perc = porzioni_perc[i]
                 with cols_chk[i]:
                     if perc >= 0:
+                        # Di default spunta solo la prima porzione
                         mangio = st.checkbox(f"🍽️ Mangio Porz. {i+1} ({perc:.1f}%)", value=(i==0), key=f"mangio_chk_{i}")
                         if mangio:
                             porzioni_selezionate.append(i)
                         
+                        # Calcolo peso, calorie e MACROS della singola porzione
                         p_peso = m_peso_tot * (perc / 100.0)
                         p_cal = m_cal_tot * (perc / 100.0)
-                        st.caption(f"⚖️ {p_peso:.1f} g\n🔥 {p_cal:.0f} kcal")
+                        p_c = m_c_tot * (perc / 100.0)
+                        p_p = m_p_tot * (perc / 100.0)
+                        p_f = m_f_tot * (perc / 100.0)
+                        
+                        st.caption(f"⚖️ {p_peso:.1f}g | 🔥 {p_cal:.0f} kcal  \n🍞 {p_c:.1f}g | 🥩 {p_p:.1f}g | 🥑 {p_f:.1f}g")
                     else:
                         st.error("Errore %")
 
@@ -1503,9 +1509,14 @@ elif pagina_corrente == "📅 Diario Alimentare":
                         if mangio:
                             porzioni_selezionate_lib.append(i)
                         
+                        # Calcolo peso, calorie e MACROS della singola porzione
                         p_peso = peso_cotto_libero * (perc / 100.0)
                         p_cal = m_cal_tot * (perc / 100.0)
-                        st.caption(f"⚖️ {p_peso:.1f} g\n🔥 {p_cal:.0f} kcal")
+                        p_c = m_c_tot * (perc / 100.0)
+                        p_p = m_p_tot * (perc / 100.0)
+                        p_f = m_f_tot * (perc / 100.0)
+                        
+                        st.caption(f"⚖️ {p_peso:.1f}g | 🔥 {p_cal:.0f} kcal  \n🍞 {p_c:.1f}g | 🥩 {p_p:.1f}g | 🥑 {p_f:.1f}g")
                     else:
                         st.error("Errore %")
 
