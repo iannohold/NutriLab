@@ -1945,13 +1945,117 @@ elif pagina_corrente == "📅 Diario Alimentare":
                 st.write("Nessun altro giorno salvato nel tuo storico.")
 
         with tab_planner:
-            st.markdown("### 📆 I Tuoi Pasti Futuri")
-            st.write("Usa il calendario in alto per registrare i tuoi pasti per i giorni a venire. Qui trovi il riepilogo della tua programmazione settimanale.")
+            st.markdown("### 📆 Meal Planning e Lista Spesa")
+            st.write("Copia le tue giornate migliori per creare velocemente il tuo piano alimentare settimanale.")
             
+            # --- FUNZIONE 1: COPIA GIORNATA ---
+            st.markdown("#### 👯 Clona una giornata")
+            c_copia1, c_copia2, c_copia_btn = st.columns([1.5, 1.5, 1])
+            data_origine = c_copia1.date_input("Da quale data vuoi COPIARE i pasti?", pd.to_datetime('today'), key="date_orig")
+            data_destinazione = c_copia2.date_input("In quale data futura vuoi INCOLLARLI?", pd.to_datetime('today') + pd.Timedelta(days=1), key="date_dest")
+            
+            with c_copia_btn:
+                st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+                if st.button("🪄 Clona Giornata", use_container_width=True, type="primary"):
+                    if str(data_origine) == str(data_destinazione):
+                        st.warning("⚠️ Scegli una data di destinazione diversa da quella di origine.")
+                    else:
+                        df_orig = df_diario[df_diario['Data'] == str(data_origine)]
+                        if df_orig.empty:
+                            st.error("❌ Nessun pasto trovato nella data di origine da copiare!")
+                        else:
+                            with st.spinner("Clonazione dei pasti in corso..."):
+                                nuovi_pasti = []
+                                for _, row in df_orig.iterrows():
+                                    new_row = row.to_dict()
+                                    new_row['ID'] = uuid.uuid4().hex  # Nuovo ID univoco
+                                    new_row['Data'] = str(data_destinazione) # Nuova data
+                                    nuovi_pasti.append(new_row)
+                                
+                                if nuovi_pasti:
+                                    # Leggiamo il DB aggiornato a ttl=0 per sicurezza prima di scrivere
+                                    df_diario_live = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=0)
+                                    df_to_add = pd.DataFrame(nuovi_pasti)
+                                    df_diario_full_upd = pd.concat([df_diario_live, df_to_add], ignore_index=True)
+                                    
+                                    conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Diario", data=df_diario_full_upd)
+                                    st.cache_data.clear()
+                                    st.success(f"✅ Giornata clonata! {len(nuovi_pasti)} elementi copiati al {data_destinazione.strftime('%d/%m/%Y')}.")
+                                    st.rerun()
+
+            st.divider()
+
+            # --- FUNZIONE 2: LISTA DELLA SPESA CON INVENTARIO ---
             df_diario['Data_DT'] = pd.to_datetime(df_diario['Data'], format='%Y-%m-%d', errors='coerce').dt.date
             oggi_date = pd.to_datetime('today').date()
             df_futuro = df_diario[df_diario['Data_DT'] > oggi_date].copy()
+
+            c_spesa1, c_spesa2 = st.columns([2, 1])
+            with c_spesa1:
+                st.markdown("#### 🛒 La tua Lista della Spesa")
+                st.write("Genera una lista di ciò che ti servirà per i pasti futuri già pianificati.")
             
+            with c_spesa2:
+                st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
+                if not df_futuro.empty:
+                    if st.button("🛍️ Calcola Lista della Spesa", use_container_width=True):
+                        st.session_state.mostra_spesa = True
+                else:
+                    st.button("🛍️ Calcola Lista della Spesa", disabled=True, use_container_width=True)
+
+            if st.session_state.get("mostra_spesa", False) and not df_futuro.empty:
+                giorni_pianificati = df_futuro['Data_DT'].nunique()
+                st.info(f"📊 Fabbisogno totale calcolato per i prossimi **{giorni_pianificati} giorni**.")
+                
+                # 1. Raggruppa gli elementi e pulisce i nomi
+                df_spesa = df_futuro.groupby(['Elemento', 'Unita'])['Quantita'].sum().reset_index()
+                df_spesa['Ingrediente'] = df_spesa['Elemento'].apply(lambda x: str(x).replace("🛒 ", "").replace("🍽️ ", "").replace("⏱️ ", "").replace("📦 ", ""))
+                
+                # 2. Crea il Dataframe per l'editor con la colonna "In Dispensa"
+                df_editor = df_spesa[['Ingrediente', 'Quantita', 'Unita']].rename(columns={'Quantita': 'Fabbisogno'})
+                df_editor['In Dispensa'] = 0.0  
+                
+                st.write("✏️ **Fai l'inventario:** Fai doppio clic sulla colonna *'In Dispensa'* per inserire le quantità che hai già a casa. La lista finale in basso si aggiornerà in automatico!")
+                
+                # 3. Tabella interattiva editabile
+                edited_df = st.data_editor(
+                    df_editor,
+                    column_config={
+                        "Ingrediente": st.column_config.TextColumn("Ingrediente", disabled=True),
+                        "Fabbisogno": st.column_config.NumberColumn("Richiesto", disabled=True, format="%.1f"),
+                        "Unita": st.column_config.TextColumn("Unità", disabled=True),
+                        "In Dispensa": st.column_config.NumberColumn("In Dispensa ✏️", min_value=0.0, format="%.1f", step=10.0)
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    key="editor_inventario"
+                )
+                
+                # 4. Calcolo scontrino finale dinamico
+                st.markdown("### � Scontrino Finale (Cosa devi comprare)")
+                spesa_testo = ""
+                
+                # Ordina alfabeticamente lo scontrino
+                edited_df = edited_df.sort_values(by='Ingrediente')
+                
+                for _, r in edited_df.iterrows():
+                    da_comprare = max(float(r['Fabbisogno']) - float(r['In Dispensa']), 0.0)
+                    if da_comprare > 0:
+                        spesa_testo += f"- [ ] **{r['Ingrediente']}**: {da_comprare:.1f} {r['Unita']}\n"
+                
+                if spesa_testo:
+                    st.markdown(spesa_testo)
+                else:
+                    st.success("🎉 Hai già tutto in dispensa! Non devi comprare assolutamente nulla.")
+                
+                if st.button("Chiudi Lista", type="secondary"):
+                    st.session_state.mostra_spesa = False
+                    st.rerun()
+
+            st.divider()
+
+            # --- VISUALIZZAZIONE PASTI FUTURI ---
+            st.markdown("### 🔍 Riepilogo Giornate Future")
             if not df_futuro.empty:
                 giorni_futuri = sorted(df_futuro['Data'].unique())
                 for d in giorni_futuri:
@@ -1960,7 +2064,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
                     d_obj = pd.to_datetime(d)
                     nome_giorno = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"][d_obj.weekday()]
                     
-                    with st.expander(f"📌 {nome_giorno} {d_obj.strftime('%d/%m/%Y')} - Pianificato: {t_cal_storico:.0f} kcal", expanded=True):
+                    with st.expander(f"📌 {nome_giorno} {d_obj.strftime('%d/%m/%Y')} - Pianificato: {t_cal_storico:.0f} kcal", expanded=False):
                         st.markdown(f"**Macros Previsti:** Carboidrati: {df_giorno['Carboidrati'].sum():.1f}g | Proteine: {df_giorno['Proteine'].sum():.1f}g | Grassi: {df_giorno['Grassi'].sum():.1f}g")
                         st.write("")
                         for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
@@ -1970,8 +2074,21 @@ elif pagina_corrente == "📅 Diario Alimentare":
                                 for _, row in df_pasto_s.iterrows():
                                     st.write(f"- {row['Quantita']:.1f} {row['Unita']} di {row['Elemento']}")
                         st.write("")
-                        if st.button(f"Vai a {nome_giorno}", key=f"btn_go_{d}"):
-                            st.info("💡 Scorri in alto e seleziona questa data nel calendario per fare modifiche!")
+                        
+                        col_go, col_del_day = st.columns([1, 1])
+                        if col_go.button(f"✏️ Modifica", key=f"btn_go_{d}"):
+                            st.info("💡 Scorri in alto e seleziona questa data nel calendario per fare modifiche ai singoli elementi!")
+                        
+                        # Tasto per svuotare un'intera giornata futura
+                        if col_del_day.button(f"🗑️ Svuota intera giornata", key=f"btn_del_day_{d}"):
+                            with st.spinner("Cancellazione..."):
+                                df_diario_live = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=0)
+                                # Mantieni solo le righe che NON corrispondono a quella data per questo utente
+                                mask_da_eliminare = (df_diario_live['Data'] == str(d)) & (df_diario_live['User_ID'] == USER_ID)
+                                df_diario_live = df_diario_live[~mask_da_eliminare]
+                                conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Diario", data=df_diario_live)
+                                st.cache_data.clear()
+                                st.rerun()
             else:
                 st.success("Non hai ancora pianificato nessun pasto per i prossimi giorni.")
                 
