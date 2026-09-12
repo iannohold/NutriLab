@@ -1709,7 +1709,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
             """, unsafe_allow_html=True
         )
 
-        tab_report, tab_storico, tab_planner = st.tabs(["📈 Statistiche e Report", "🗓️ Storico Giornaliero", "📆 Meal Planning (Futuro)"])
+        tab_storico, tab_report, tab_planner = st.tabs(["🗓️ Storico Giornaliero", "📈 Statistiche e Report", "📆 Meal Planning (Futuro)"])
 
         with tab_report:
             c_date1, c_date2 = st.columns([1, 2])
