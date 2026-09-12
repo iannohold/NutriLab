@@ -825,7 +825,9 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
             st.write("Puoi salvare questa singola porzione come prodotto a sé stante (es. 'Barretta Vins') per poterla inserire al volo nel Diario.")
             
             c_np, c_bp = st.columns([2, 1])
-            nome_porz_db = c_np.text_input("Nome del prodotto da salvare:", value=f"Porzione di {n_ric}" if n_ric else "")
+            nome_base = st.session_state.get('nome_ricetta', '').strip()
+            val_default = f"Porzione di {nome_base}" if nome_base and nome_base != "Nuova Ricetta" else ""
+            nome_porz_db = c_np.text_input("Nome del prodotto da salvare:", value=val_default)
             
             with c_bp:
                 st.write("")
