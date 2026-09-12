@@ -820,6 +820,58 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
             cm4.markdown(f"**Saturi**\n\n{(s_f / n_porz):.1f} g")
             cm5.markdown(f"**Fibre**\n\n{(fib_f / n_porz):.1f} g")
 
+            st.divider()
+            st.markdown("#### 💾 Salva Porzione nel Database")
+            st.write("Puoi salvare questa singola porzione come prodotto a sé stante (es. 'Barretta Vins') per poterla inserire al volo nel Diario.")
+            
+            c_np, c_bp = st.columns([2, 1])
+            nome_porz_db = c_np.text_input("Nome del prodotto da salvare:", value=f"Porzione di {n_ric}" if n_ric else "")
+            
+            with c_bp:
+                st.write("")
+                if st.button("➕ Salva come Prodotto (pz)", use_container_width=True, key="btn_save_porz_db"):
+                    if nome_porz_db:
+                        esiste_gia = nome_porz_db.strip().lower() in [k.lower() for k in MACROS_DB.keys()]
+                        if esiste_gia:
+                            st.session_state.show_dup_warning_ricetta = nome_porz_db
+                        else:
+                            with st.spinner("Salvataggio nel Database..."):
+                                # Il DB ragiona su 100g, quindi riproporzioniamo i macros finali cotti su 100g
+                                cal_100 = (cal_f / peso_finale * 100) if peso_finale > 0 else 0
+                                p_100 = (p_f / peso_finale * 100) if peso_finale > 0 else 0
+                                c_100 = (c_f / peso_finale * 100) if peso_finale > 0 else 0
+                                f_100 = (f_f / peso_finale * 100) if peso_finale > 0 else 0
+                                sat_100 = (s_f / peso_finale * 100) if peso_finale > 0 else 0
+                                fib_100 = (fib_f / peso_finale * 100) if peso_finale > 0 else 0
+                                
+                                success = salva_su_cloud(nome_porz_db, cal_100, p_100, c_100, f_100, sat_100, fib_100, 0.0, w_porz, "pz")
+                                if success:
+                                    st.success(f"✅ '{nome_porz_db}' salvato nel Database Prodotti!")
+                                    st.rerun()
+                    else:
+                        st.warning("Inserisci un nome valido.")
+
+            # Gestione sovrascrittura duplicato
+            if st.session_state.get("show_dup_warning_ricetta") == nome_porz_db:
+                st.error(f"⚠️ Esiste già un prodotto chiamato '{nome_porz_db}' nel database.")
+                cy, cn = st.columns(2)
+                if cy.button("🚨 Sovrascrivi Esistente", key="btn_over_porz", type="primary"):
+                    with st.spinner("Sovrascrittura in corso..."):
+                        cal_100 = (cal_f / peso_finale * 100) if peso_finale > 0 else 0
+                        p_100 = (p_f / peso_finale * 100) if peso_finale > 0 else 0
+                        c_100 = (c_f / peso_finale * 100) if peso_finale > 0 else 0
+                        f_100 = (f_f / peso_finale * 100) if peso_finale > 0 else 0
+                        sat_100 = (s_f / peso_finale * 100) if peso_finale > 0 else 0
+                        fib_100 = (fib_f / peso_finale * 100) if peso_finale > 0 else 0
+                        
+                        salva_su_cloud(nome_porz_db, cal_100, p_100, c_100, f_100, sat_100, fib_100, 0.0, w_porz, "pz")
+                        st.session_state.show_dup_warning_ricetta = None
+                        st.success("✅ Prodotto aggiornato!")
+                        st.rerun()
+                if cn.button("❌ Annulla e cambia nome", key="btn_canc_porz"):
+                    st.session_state.show_dup_warning_ricetta = None
+                    st.rerun()
+
         with tab_comp:
             st.write("Analisi dell'apporto nutrizionale suddiviso in base al ruolo dell'ingrediente.")
             for r in RUOLI_LIST:
