@@ -172,17 +172,23 @@ def cerca_alimento_web(nome):
 
 def cerca_locale(nome):
     nome_clean = nome.lower().replace("d'", "di ").strip()
-    for db_nome, macros in MACROS_DB.items():
-        if db_nome.lower() == nome_clean:
-            return True, db_nome, macros[0], macros[1], macros[2], macros[3], macros[4], macros[5], macros[6], macros[7], macros[8]
-    for db_nome, macros in MACROS_DB.items():
-        db_clean = db_nome.lower().replace("d'", "di ")
-        if db_clean in nome_clean or nome_clean in db_clean:
-            return True, db_nome, macros[0], macros[1], macros[2], macros[3], macros[4], macros[5], macros[6], macros[7], macros[8]
+    match_parziale = None
+    
     for db_nome, macros in MACROS_DB.items():
         db_clean = db_nome.lower().replace("d'", "di ")
-        if len(set(nome_clean.split()).intersection(set(db_clean.split()))) >= 2:
+        
+        # 1. Match Esatto (Priorità assoluta: se lo trova, si ferma subito)
+        if db_clean == nome_clean:
             return True, db_nome, macros[0], macros[1], macros[2], macros[3], macros[4], macros[5], macros[6], macros[7], macros[8]
+            
+        # 2. Match Parziale (Se non c'è match esatto, si accontenta di somiglianze)
+        if not match_parziale:
+            if db_clean in nome_clean or nome_clean in db_clean:
+                match_parziale = (True, db_nome, macros[0], macros[1], macros[2], macros[3], macros[4], macros[5], macros[6], macros[7], macros[8])
+            elif len(set(nome_clean.split()).intersection(set(db_clean.split()))) >= 2:
+                match_parziale = (True, db_nome, macros[0], macros[1], macros[2], macros[3], macros[4], macros[5], macros[6], macros[7], macros[8])
+                
+    if match_parziale: return match_parziale
     return False, "", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "g"
 
 # =========================================================
@@ -484,7 +490,7 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
     with tab_cloud:
         st.write("Gestisci le tue ricette o esplora quelle della community.")
         try:
-            df_ricette = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Ricette")
+            df_ricette = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Ricette", ttl=600)
             df_ricette = df_ricette.dropna(subset=['Nome Ricetta'])
             
             if 'User_ID' not in df_ricette.columns: df_ricette['User_ID'] = ADMIN_ID
