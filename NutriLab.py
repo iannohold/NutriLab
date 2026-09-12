@@ -939,7 +939,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
     # --- RECUPERO OBIETTIVI AL TOP DELLA PAGINA (Per salvarli nel diario) ---
     tgt_cal = tgt_c = tgt_p = tgt_f = 0.0
     try:
-        df_prof = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Profilo", ttl=60)
+        df_prof = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Profilo", ttl=600)
         u_prof = df_prof[df_prof['User_ID'] == USER_ID]
         if not u_prof.empty:
             tgt_cal = float(u_prof.iloc[0].get('TGT_Cal', 0) or 0)
@@ -983,7 +983,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
     # ---------------------------------------------------------
     if tipo_inserimento_diario == "📚 Dal tuo Ricettario":
         try:
-            df_ric_cloud = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Ricette")
+            df_ric_cloud = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Ricette", ttl=600)
             if 'User_ID' not in df_ric_cloud.columns: df_ric_cloud['User_ID'] = ADMIN_ID
             df_ric_cloud = df_ric_cloud[df_ric_cloud['User_ID'] == USER_ID]
             ricette_list = df_ric_cloud['Nome Ricetta'].dropna().tolist()
@@ -1538,7 +1538,7 @@ elif pagina_corrente == "📅 Diario Alimentare":
     st.divider()
     
     try:
-        df_diario_completo = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=60)
+        df_diario_completo = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=600)
         if 'User_ID' not in df_diario_completo.columns: df_diario_completo['User_ID'] = ADMIN_ID
         
         expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"]
