@@ -835,7 +835,9 @@ if pagina_corrente == "🧪 Laboratorio Ricette":
                 txt_exp += f"\n  [{r_ord.upper()}]\n"
                 for i in st.session_state.ingredients:
                     if i.get('ruolo', 'Impasto') == r_ord:
-                        txt_exp += f"  - {i['quantita']} {i['unita']} {i['nome']}\n"
+                        # NOVITÀ: Aggiunge i grammi tra parentesi solo se l'unità è in pezzi
+                        peso_extra = f" ({i['peso']:.0f}g)" if i['unita'] == 'pz' else ""
+                        txt_exp += f"  - {i['quantita']} {i['unita']} {i['nome']}{peso_extra}\n"
         
         txt_exp += f"\nPREPARAZIONE:\n"
         if rip: txt_exp += f"- Riposo: {rip}\n"
