@@ -1750,33 +1750,30 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
             st.markdown(f"#### 🔵 Riepilogo: {data_sel_diario.strftime('%d/%m/%Y')}")
             df_giorno_sel = df_diario[df_diario['Data'] == str(data_sel_diario)]
             
-            st.write("")
-            for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
-                df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
-                if not df_giorno_sel.empty:
-                    t_cal = df_giorno_sel['Calorie'].sum(); t_c = df_giorno_sel['Carboidrati'].sum(); t_p = df_giorno_sel['Proteine'].sum(); t_f = df_giorno_sel['Grassi'].sum()
-                    if tgt_cal > 0:
-                cp1, cp2, cp3, cp4 = st.columns(4)
-                render_prog(cp1, "🔥 Cal", t_cal, tgt_cal, "kcal")
-                render_prog(cp2, "🍞 Carb", t_c, tgt_c, "g")
-                   render_prog(cp3, "🥩 Prot", t_p, tgt_p, "g")
-                 render_prog(cp4, "🥑 Gras", t_f, tgt_f, "g")
-                st.write("")
-            else:
-                cm1, cm2, cm3, cm4 = st.columns(4)
-                cm1.metric("🔥 Calorie Totali", f"{t_cal:.0f} kcal")
-                cm2.metric("🍞 Carboidrati", f"{t_c:.1f} g")
-                 cm3.metric("🥩 Proteine", f"{t_p:.1f} g")
-                 cm4.metric("🥑 Grassi", f"{t_f:.1f} g")
+            if not df_giorno_sel.empty:
+                t_cal = df_giorno_sel['Calorie'].sum(); t_c = df_giorno_sel['Carboidrati'].sum(); t_p = df_giorno_sel['Proteine'].sum(); t_f = df_giorno_sel['Grassi'].sum()
+                if tgt_cal > 0:
+                    cp1, cp2, cp3, cp4 = st.columns(4)
+                    render_prog(cp1, "🔥 Cal", t_cal, tgt_cal, "kcal")
+                    render_prog(cp2, "🍞 Carb", t_c, tgt_c, "g")
+                    render_prog(cp3, "🥩 Prot", t_p, tgt_p, "g")
+                    render_prog(cp4, "🥑 Gras", t_f, tgt_f, "g")
+                    st.write("")
+                else:
+                    cm1, cm2, cm3, cm4 = st.columns(4)
+                    cm1.metric("🔥 Calorie Totali", f"{t_cal:.0f} kcal")
+                    cm2.metric("🍞 Carboidrati", f"{t_c:.1f} g")
+                    cm3.metric("🥩 Proteine", f"{t_p:.1f} g")
+                    cm4.metric("🥑 Grassi", f"{t_f:.1f} g")
                 
                 st.write("")
                 for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
-                df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
-                if not df_pasto.empty:
-                    t_cal_p = df_pasto['Calorie'].sum(); t_c_p = df_pasto['Carboidrati'].sum(); t_p_p = df_pasto['Proteine'].sum(); t_f_p = df_pasto['Grassi'].sum()
-                    with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g)", expanded=False):
-                        for _, row in df_pasto.iterrows():
-                            c_text, c_del = st.columns([0.90, 0.10])
+                    df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
+                    if not df_pasto.empty:
+                        t_cal_p = df_pasto['Calorie'].sum(); t_c_p = df_pasto['Carboidrati'].sum(); t_p_p = df_pasto['Proteine'].sum(); t_f_p = df_pasto['Grassi'].sum()
+                        with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g)", expanded=False):
+                            for _, row in df_pasto.iterrows():
+                                c_text, c_del = st.columns([0.90, 0.10])
                                 
                                 # Verifica lo stato del pasto
                                 is_pianificato = str(row.get('Stato', 'Consumato')) == 'Pianificato'
@@ -1784,7 +1781,7 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
                                 
                                 c_text.write(f"- {icon_prefix} **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
                                 
-                                # --- NUOVO: MODULO DI CONFERMA E MODIFICA ---
+                                # Modulo di conferma e modifica per pasti pianificati
                                 if is_pianificato:
                                     with st.container():
                                         cc_spazio, cc_qta, cc_btn = st.columns([0.05, 0.45, 0.50])
@@ -1792,10 +1789,9 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
                                         cc_btn.write("")
                                         if cc_btn.button("✅ Conferma Pasto", key=f"btn_conf_{row['ID']}", type="primary"):
                                             with st.spinner("Conferma in corso..."):
-                                                # Ricalcolo proporzionale dei macro
                                                 ratio = nuova_qta / float(row['Quantita']) if float(row['Quantita']) > 0 else 0
                                                 df_live = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=0)
-                                                idx = df_live[df_live.iloc[:, 0] == row['ID']].index # Colonna 0 è l'ID
+                                                idx = df_live[df_live.iloc[:, 0] == row['ID']].index
                                                 
                                                 if not idx.empty:
                                                     df_live.at[idx[0], 'Quantita'] = nuova_qta
@@ -1810,7 +1806,6 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
                                                     conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Diario", data=df_live)
                                                     st.cache_data.clear()
                                                     st.rerun()
-                                # ----------------------------------------------
 
                                 if st.session_state.get('confirm_del_diario') != row['ID']:
                                     if c_del.button("❌", key=f"del_oggi_{row['ID']}"):
