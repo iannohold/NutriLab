@@ -188,6 +188,14 @@ def cerca_locale(nome):
     if match_parziale: return match_parziale
     return False, "", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "g"
 
+def get_macros_and_match(nome):
+    trovato, db_nome, cal, p, c, f, fib, sat, var_cott, peso_pz, unita = cerca_locale(nome)
+    if trovato:
+        return db_nome, cal, p, c, f, fib, sat, var_cott, peso_pz, unita
+    else:
+        # Se non lo trova, restituisce il nome cercato con valori a zero
+        return nome, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "g"
+
 # =========================================================
 # VARIABILI DI SESSIONE E AUTOSAVE IN BACKGROUND
 # =========================================================
