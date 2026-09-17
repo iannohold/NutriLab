@@ -2024,7 +2024,7 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
                                     new_row = row.to_dict()
                                     new_row['ID'] = uuid.uuid4().hex  
                                     new_row['Data'] = str(data_destinazione)
-                                    new_row['Stato'] = "Pianificato" 
+                                     
                                     nuovi_pasti.append(new_row)
                                 
                                 if nuovi_pasti:
