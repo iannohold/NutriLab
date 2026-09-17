@@ -1752,31 +1752,31 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
             
             st.write("")
             for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
-                    df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
-                    if not df_giorno_sel.empty:
-                t_cal = df_giorno_sel['Calorie'].sum(); t_c = df_giorno_sel['Carboidrati'].sum(); t_p = df_giorno_sel['Proteine'].sum(); t_f = df_giorno_sel['Grassi'].sum()
-                if tgt_cal > 0:
-                    cp1, cp2, cp3, cp4 = st.columns(4)
-                    render_prog(cp1, "🔥 Cal", t_cal, tgt_cal, "kcal")
-                    render_prog(cp2, "🍞 Carb", t_c, tgt_c, "g")
-                    render_prog(cp3, "🥩 Prot", t_p, tgt_p, "g")
-                    render_prog(cp4, "🥑 Gras", t_f, tgt_f, "g")
-                    st.write("")
-                else:
-                    cm1, cm2, cm3, cm4 = st.columns(4)
-                    cm1.metric("🔥 Calorie Totali", f"{t_cal:.0f} kcal")
-                    cm2.metric("🍞 Carboidrati", f"{t_c:.1f} g")
-                    cm3.metric("🥩 Proteine", f"{t_p:.1f} g")
-                    cm4.metric("🥑 Grassi", f"{t_f:.1f} g")
+                df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
+                if not df_giorno_sel.empty:
+            t_cal = df_giorno_sel['Calorie'].sum(); t_c = df_giorno_sel['Carboidrati'].sum(); t_p = df_giorno_sel['Proteine'].sum(); t_f = df_giorno_sel['Grassi'].sum()
+            if tgt_cal > 0:
+                cp1, cp2, cp3, cp4 = st.columns(4)
+                render_prog(cp1, "🔥 Cal", t_cal, tgt_cal, "kcal")
+                render_prog(cp2, "🍞 Carb", t_c, tgt_c, "g")
+                   render_prog(cp3, "🥩 Prot", t_p, tgt_p, "g")
+                 render_prog(cp4, "🥑 Gras", t_f, tgt_f, "g")
+                st.write("")
+            else:
+                cm1, cm2, cm3, cm4 = st.columns(4)
+                cm1.metric("🔥 Calorie Totali", f"{t_cal:.0f} kcal")
+                cm2.metric("🍞 Carboidrati", f"{t_c:.1f} g")
+                 cm3.metric("🥩 Proteine", f"{t_p:.1f} g")
+                 cm4.metric("🥑 Grassi", f"{t_f:.1f} g")
                 
                 st.write("")
                 for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
-                    df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
-                    if not df_pasto.empty:
-                        t_cal_p = df_pasto['Calorie'].sum(); t_c_p = df_pasto['Carboidrati'].sum(); t_p_p = df_pasto['Proteine'].sum(); t_f_p = df_pasto['Grassi'].sum()
-                        with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g)", expanded=False):
-                            for _, row in df_pasto.iterrows():
-                                c_text, c_del = st.columns([0.90, 0.10])
+                df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
+                if not df_pasto.empty:
+                    t_cal_p = df_pasto['Calorie'].sum(); t_c_p = df_pasto['Carboidrati'].sum(); t_p_p = df_pasto['Proteine'].sum(); t_f_p = df_pasto['Grassi'].sum()
+                    with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g)", expanded=False):
+                        for _, row in df_pasto.iterrows():
+                            c_text, c_del = st.columns([0.90, 0.10])
                                 
                                 # Verifica lo stato del pasto
                                 is_pianificato = str(row.get('Stato', 'Consumato')) == 'Pianificato'
