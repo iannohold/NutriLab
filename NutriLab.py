@@ -1630,11 +1630,17 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
                         df_diario = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=0)
                         if 'User_ID' not in df_diario.columns: df_diario['User_ID'] = ADMIN_ID
                         
-                        expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"]
+                        expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F", "Stato"]
                         for c in expected:
                             if c not in df_diario.columns: df_diario[c] = None
                         df_diario = df_diario[expected]
                         
+                        # --- NUOVO: ASSEGNA STATO IN BASE ALLA DATA ---
+                        oggi_check = pd.to_datetime('today').date()
+                        stato_ins = "Pianificato" if data_selezionata > oggi_check else "Consumato"
+                        for row_dict in rows_to_add:
+                            row_dict["Stato"] = stato_ins
+                            
                         nuove_righe = pd.DataFrame(rows_to_add)
                         df_diario_upd = pd.concat([df_diario, nuove_righe], ignore_index=True)
                         conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Diario", data=df_diario_upd)
@@ -1701,15 +1707,18 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
         df_diario_completo = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=600)
         if 'User_ID' not in df_diario_completo.columns: df_diario_completo['User_ID'] = ADMIN_ID
         
-        expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"]
+        expected = ["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F", "Stato"]
         for c in expected:
             if c not in df_diario_completo.columns: df_diario_completo[c] = None
+            
+        # I vecchi record senza stato vengono marcati come Consumati in automatico
+        df_diario_completo['Stato'] = df_diario_completo['Stato'].fillna("Consumato") 
         df_diario_completo = df_diario_completo[expected]
         
         df_diario = df_diario_completo[df_diario_completo['User_ID'] == USER_ID].copy()
         df_diario['Data_DT'] = pd.to_datetime(df_diario['Data'], format='%Y-%m-%d', errors='coerce').dt.date
     except Exception:
-        df_diario = pd.DataFrame(columns=["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F", "Data_DT"])
+        df_diario = pd.DataFrame(columns=["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F", "Stato", "Data_DT"])
 
     tgt_cal = tgt_c = tgt_p = tgt_f = 0.0
     try:
@@ -1741,23 +1750,7 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
             st.markdown(f"#### 🔵 Riepilogo: {data_sel_diario.strftime('%d/%m/%Y')}")
             df_giorno_sel = df_diario[df_diario['Data'] == str(data_sel_diario)]
             
-            if not df_giorno_sel.empty:
-                t_cal = df_giorno_sel['Calorie'].sum(); t_c = df_giorno_sel['Carboidrati'].sum(); t_p = df_giorno_sel['Proteine'].sum(); t_f = df_giorno_sel['Grassi'].sum()
-                if tgt_cal > 0:
-                    cp1, cp2, cp3, cp4 = st.columns(4)
-                    render_prog(cp1, "🔥 Cal", t_cal, tgt_cal, "kcal")
-                    render_prog(cp2, "🍞 Carb", t_c, tgt_c, "g")
-                    render_prog(cp3, "🥩 Prot", t_p, tgt_p, "g")
-                    render_prog(cp4, "🥑 Gras", t_f, tgt_f, "g")
-                    st.write("")
-                else:
-                    cm1, cm2, cm3, cm4 = st.columns(4)
-                    cm1.metric("🔥 Calorie Totali", f"{t_cal:.0f} kcal")
-                    cm2.metric("🍞 Carboidrati", f"{t_c:.1f} g")
-                    cm3.metric("🥩 Proteine", f"{t_p:.1f} g")
-                    cm4.metric("🥑 Grassi", f"{t_f:.1f} g")
-                
-                st.write("")
+            st.write("")
                 for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
                     df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
                     if not df_pasto.empty:
@@ -1765,8 +1758,41 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
                         with st.expander(f"🍽️ {pasto.upper()} (Tot: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g)", expanded=False):
                             for _, row in df_pasto.iterrows():
                                 c_text, c_del = st.columns([0.90, 0.10])
-                                c_text.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
                                 
+                                # Verifica lo stato del pasto
+                                is_pianificato = str(row.get('Stato', 'Consumato')) == 'Pianificato'
+                                icon_prefix = "⏳ **[PIANIFICATO]**" if is_pianificato else ""
+                                
+                                c_text.write(f"- {icon_prefix} **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
+                                
+                                # --- NUOVO: MODULO DI CONFERMA E MODIFICA ---
+                                if is_pianificato:
+                                    with st.container():
+                                        cc_spazio, cc_qta, cc_btn = st.columns([0.05, 0.45, 0.50])
+                                        nuova_qta = cc_qta.number_input(f"Modifica Q.tà consumata ({row['Unita']})", value=float(row['Quantita']), step=1.0, key=f"qta_conf_{row['ID']}")
+                                        cc_btn.write("")
+                                        if cc_btn.button("✅ Conferma Pasto", key=f"btn_conf_{row['ID']}", type="primary"):
+                                            with st.spinner("Conferma in corso..."):
+                                                # Ricalcolo proporzionale dei macro
+                                                ratio = nuova_qta / float(row['Quantita']) if float(row['Quantita']) > 0 else 0
+                                                df_live = conn.read(spreadsheet=SPREADSHEET_URL, worksheet="Diario", ttl=0)
+                                                idx = df_live[df_live.iloc[:, 0] == row['ID']].index # Colonna 0 è l'ID
+                                                
+                                                if not idx.empty:
+                                                    df_live.at[idx[0], 'Quantita'] = nuova_qta
+                                                    df_live.at[idx[0], 'Calorie'] = float(row['Calorie']) * ratio
+                                                    df_live.at[idx[0], 'Carboidrati'] = float(row['Carboidrati']) * ratio
+                                                    df_live.at[idx[0], 'Proteine'] = float(row['Proteine']) * ratio
+                                                    df_live.at[idx[0], 'Grassi'] = float(row['Grassi']) * ratio
+                                                    df_live.at[idx[0], 'Saturi'] = float(row['Saturi']) * ratio
+                                                    df_live.at[idx[0], 'Fibre'] = float(row['Fibre']) * ratio
+                                                    df_live.at[idx[0], 'Stato'] = 'Consumato'
+                                                    
+                                                    conn.update(spreadsheet=SPREADSHEET_URL, worksheet="Diario", data=df_live)
+                                                    st.cache_data.clear()
+                                                    st.rerun()
+                                # ----------------------------------------------
+
                                 if st.session_state.get('confirm_del_diario') != row['ID']:
                                     if c_del.button("❌", key=f"del_oggi_{row['ID']}"):
                                         st.session_state.confirm_del_diario = row['ID']
@@ -1997,7 +2023,8 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
                                 for _, row in df_orig.iterrows():
                                     new_row = row.to_dict()
                                     new_row['ID'] = uuid.uuid4().hex  
-                                    new_row['Data'] = str(data_destinazione) 
+                                    new_row['Data'] = str(data_destinazione)
+                                    new_row['Stato'] = "Pianificato" 
                                     nuovi_pasti.append(new_row)
                                 
                                 if nuovi_pasti:
