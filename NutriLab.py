@@ -1751,7 +1751,7 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
             df_giorno_sel = df_diario[df_diario['Data'] == str(data_sel_diario)]
             
             st.write("")
-                for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
+            for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
                     df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
                     if not df_giorno_sel.empty:
                 t_cal = df_giorno_sel['Calorie'].sum(); t_c = df_giorno_sel['Carboidrati'].sum(); t_p = df_giorno_sel['Proteine'].sum(); t_f = df_giorno_sel['Grassi'].sum()
