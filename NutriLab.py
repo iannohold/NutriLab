@@ -1754,8 +1754,8 @@ elif pagina_corrente == "📅 Diario Alimentare" or pagina_corrente == "📆 Mea
             for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
                 df_pasto = df_giorno_sel[(df_giorno_sel['Pasto'] == pasto) | (df_giorno_sel['Pasto'] == "Spuntino Mattina" if pasto == "Spuntino" else False)]
                 if not df_giorno_sel.empty:
-            t_cal = df_giorno_sel['Calorie'].sum(); t_c = df_giorno_sel['Carboidrati'].sum(); t_p = df_giorno_sel['Proteine'].sum(); t_f = df_giorno_sel['Grassi'].sum()
-            if tgt_cal > 0:
+                    t_cal = df_giorno_sel['Calorie'].sum(); t_c = df_giorno_sel['Carboidrati'].sum(); t_p = df_giorno_sel['Proteine'].sum(); t_f = df_giorno_sel['Grassi'].sum()
+                    if tgt_cal > 0:
                 cp1, cp2, cp3, cp4 = st.columns(4)
                 render_prog(cp1, "🔥 Cal", t_cal, tgt_cal, "kcal")
                 render_prog(cp2, "🍞 Carb", t_c, tgt_c, "g")
